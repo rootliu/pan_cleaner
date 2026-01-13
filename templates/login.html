@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>网盘文件清理工具 - 登录</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="login-container">
+        <div class="login-box">
+            <div class="login-header">
+                <h1>网盘文件清理工具</h1>
+                <p>登录您的网盘账户开始清理</p>
+            </div>
+
+            <form id="loginForm" class="login-form">
+                <!-- 选择网盘类型 -->
+                <div class="form-group">
+                    <label>选择网盘</label>
+                    <div class="provider-options">
+                        <label class="provider-option">
+                            <input type="radio" name="provider_type" value="baidu" checked>
+                            <span class="provider-card">
+                                <span class="provider-icon">&#x1F4C1;</span>
+                                <span class="provider-name">百度网盘</span>
+                            </span>
+                        </label>
+                        <label class="provider-option">
+                            <input type="radio" name="provider_type" value="aliyun">
+                            <span class="provider-card">
+                                <span class="provider-icon">&#x2601;</span>
+                                <span class="provider-name">阿里云盘</span>
+                                <span class="coming-soon">即将支持</span>
+                            </span>
+                        </label>
+                        <label class="provider-option">
+                            <input type="radio" name="provider_type" value="quark">
+                            <span class="provider-card">
+                                <span class="provider-icon">&#x26A1;</span>
+                                <span class="provider-name">夸克网盘</span>
+                                <span class="coming-soon">即将支持</span>
+                            </span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- 登录方式选项卡 -->
+                <div class="form-group">
+                    <label>登录方式</label>
+                    <div class="login-tabs">
+                        <button type="button" class="tab-btn active" data-tab="cookie">Cookie登录</button>
+                        <button type="button" class="tab-btn" data-tab="password">密码登录</button>
+                        <button type="button" class="tab-btn" data-tab="sms">验证码登录</button>
+                    </div>
+                </div>
+
+                <!-- Cookie 登录 -->
+                <div id="cookie-form" class="tab-content active">
+                    <div class="form-group">
+                        <label for="cookie">Cookie</label>
+                        <textarea id="cookie" name="cookie" rows="4"
+                            placeholder="请从浏览器获取登录后的Cookie粘贴到这里..."></textarea>
+                        <div class="form-hint">
+                            <p>获取方法：</p>
+                            <ol>
+                                <li>在浏览器中登录百度网盘</li>
+                                <li>按 F12 打开开发者工具</li>
+                                <li>切换到 Network 标签页</li>
+                                <li>刷新页面，点击任意请求</li>
+                                <li>在 Headers 中找到 Cookie 并复制</li>
+                            </ol>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 密码登录 -->
+                <div id="password-form" class="tab-content">
+                    <div class="form-group">
+                        <label for="username">用户名</label>
+                        <input type="text" id="username" name="username" placeholder="请输入用户名">
+                    </div>
+                    <div class="form-group">
+                        <label for="password">密码</label>
+                        <input type="password" id="password" name="password" placeholder="请输入密码">
+                    </div>
+                    <div class="form-hint warning">
+                        注意：密码登录可能需要验证码，推荐使用Cookie方式
+                    </div>
+                </div>
+
+                <!-- 验证码登录 -->
+                <div id="sms-form" class="tab-content">
+                    <div class="form-group">
+                        <label for="phone">手机号</label>
+                        <input type="tel" id="phone" name="phone" placeholder="请输入手机号">
+                    </div>
+                    <div class="form-group">
+                        <label for="sms_code">验证码</label>
+                        <div class="input-with-btn">
+                            <input type="text" id="sms_code" name="sms_code" placeholder="请输入验证码">
+                            <button type="button" id="sendSmsBtn" class="btn-secondary">发送验证码</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <button type="submit" class="btn-primary btn-block" id="loginBtn">
+                        <span class="btn-text">登录</span>
+                        <span class="btn-loading" style="display: none;">登录中...</span>
+                    </button>
+                </div>
+
+                <div id="loginMessage" class="message" style="display: none;"></div>
+            </form>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+    <script>
+        // 登录页面特定逻辑
+        document.addEventListener('DOMContentLoaded', function() {
+            // 标签页切换
+            const tabBtns = document.querySelectorAll('.tab-btn');
+            const tabContents = document.querySelectorAll('.tab-content');
+
+            tabBtns.forEach(btn => {
+                btn.addEventListener('click', function() {
+                    const tab = this.dataset.tab;
+
+                    tabBtns.forEach(b => b.classList.remove('active'));
+                    tabContents.forEach(c => c.classList.remove('active'));
+
+                    this.classList.add('active');
+                    document.getElementById(tab + '-form').classList.add('active');
+                });
+            });
+
+            // 表单提交
+            document.getElementById('loginForm').addEventListener('submit', async function(e) {
+                e.preventDefault();
+
+                const btn = document.getElementById('loginBtn');
+                const message = document.getElementById('loginMessage');
+                const btnText = btn.querySelector('.btn-text');
+                const btnLoading = btn.querySelector('.btn-loading');
+
+                // 获取当前登录方式
+                const activeTab = document.querySelector('.tab-btn.active').dataset.tab;
+                const providerType = document.querySelector('input[name="provider_type"]:checked').value;
+
+                let data = {
+                    provider_type: providerType,
+                    login_method: activeTab
+                };
+
+                if (activeTab === 'cookie') {
+                    data.cookie = document.getElementById('cookie').value;
+                } else if (activeTab === 'password') {
+                    data.username = document.getElementById('username').value;
+                    data.password = document.getElementById('password').value;
+                } else if (activeTab === 'sms') {
+                    data.phone = document.getElementById('phone').value;
+                    data.sms_code = document.getElementById('sms_code').value;
+                }
+
+                // 显示加载状态
+                btn.disabled = true;
+                btnText.style.display = 'none';
+                btnLoading.style.display = 'inline';
+
+                try {
+                    const response = await fetch('/login', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify(data)
+                    });
+
+                    const result = await response.json();
+
+                    message.style.display = 'block';
+                    if (result.success) {
+                        message.className = 'message success';
+                        message.textContent = '登录成功，正在跳转...';
+                        setTimeout(() => {
+                            window.location.href = '/dashboard';
+                        }, 1000);
+                    } else {
+                        message.className = 'message error';
+                        message.textContent = result.message || '登录失败';
+                    }
+                } catch (error) {
+                    message.style.display = 'block';
+                    message.className = 'message error';
+                    message.textContent = '网络错误，请稍后重试';
+                } finally {
+                    btn.disabled = false;
+                    btnText.style.display = 'inline';
+                    btnLoading.style.display = 'none';
+                }
+            });
+
+            // 发送验证码
+            document.getElementById('sendSmsBtn').addEventListener('click', async function() {
+                const phone = document.getElementById('phone').value;
+                if (!phone) {
+                    alert('请输入手机号');
+                    return;
+                }
+
+                this.disabled = true;
+                this.textContent = '发送中...';
+
+                // TODO: 实现发送验证码逻辑
+                setTimeout(() => {
+                    this.textContent = '60s后重试';
+                    let countdown = 60;
+                    const timer = setInterval(() => {
+                        countdown--;
+                        if (countdown <= 0) {
+                            clearInterval(timer);
+                            this.disabled = false;
+                            this.textContent = '发送验证码';
+                        } else {
+                            this.textContent = countdown + 's后重试';
+                        }
+                    }, 1000);
+                }, 1000);
+            });
+        });
+    </script>
+</body>
+</html>

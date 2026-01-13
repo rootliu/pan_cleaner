@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>网盘文件清理工具 - 控制面板</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="app-container">
+        <!-- 侧边栏 -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <h2>网盘清理工具</h2>
+                <span class="provider-badge">{{ provider_name }}</span>
+            </div>
+
+            <nav class="sidebar-nav">
+                <a href="#" class="nav-item active" data-section="overview">
+                    <span class="nav-icon">&#x1F4CA;</span>
+                    <span>概览</span>
+                </a>
+                <a href="#" class="nav-item" data-section="duplicates">
+                    <span class="nav-icon">&#x1F4CB;</span>
+                    <span>重复文件</span>
+                </a>
+                <a href="#" class="nav-item" data-section="duplicate-folders">
+                    <span class="nav-icon">&#x1F4C1;</span>
+                    <span>重复文件夹</span>
+                </a>
+                <a href="#" class="nav-item" data-section="large-files">
+                    <span class="nav-icon">&#x1F4E6;</span>
+                    <span>大文件</span>
+                </a>
+                <a href="#" class="nav-item" data-section="executables">
+                    <span class="nav-icon">&#x26A0;</span>
+                    <span>可执行文件</span>
+                </a>
+                <a href="#" class="nav-item" data-section="categories">
+                    <span class="nav-icon">&#x1F4C2;</span>
+                    <span>文件分类</span>
+                </a>
+            </nav>
+
+            <div class="sidebar-footer">
+                <div class="user-info">
+                    <span>{{ user_info.get('username', '用户') }}</span>
+                </div>
+                <a href="/logout" class="btn-logout">退出登录</a>
+            </div>
+        </aside>
+
+        <!-- 主内容区 -->
+        <main class="main-content">
+            <!-- 顶部工具栏 -->
+            <header class="toolbar">
+                <div class="scan-controls">
+                    <input type="text" id="scanPath" value="/" placeholder="扫描路径" class="scan-input">
+                    <button id="scanBtn" class="btn-primary">
+                        <span class="btn-text">开始扫描</span>
+                        <span class="btn-loading" style="display: none;">扫描中...</span>
+                    </button>
+                    <button id="forceRescanBtn" class="btn-secondary" title="忽略缓存，重新扫描">
+                        强制重新扫描
+                    </button>
+                </div>
+                <div class="toolbar-actions">
+                    <button id="exportBtn" class="btn-secondary" disabled>导出报告</button>
+                </div>
+            </header>
+
+            <!-- 缓存状态提示 -->
+            <div id="cacheStatus" class="cache-status" style="display: none;">
+                <span class="cache-icon">&#x1F4BE;</span>
+                <span class="cache-message"></span>
+            </div>
+
+            <!-- 概览区域 -->
+            <section id="overview-section" class="content-section active">
+                <h2>扫描概览</h2>
+
+                <div id="beforeScan" class="placeholder-box">
+                    <div class="placeholder-icon">&#x1F50D;</div>
+                    <h3>开始扫描您的网盘</h3>
+                    <p>点击"开始扫描"按钮分析您的网盘文件</p>
+                    {% if cache_info and cache_info.exists %}
+                    <div class="cache-hint">
+                        <p>发现上次扫描缓存（{{ cache_info.scan_time[:19] if cache_info.scan_time else '未知时间' }}）</p>
+                        <p>点击扫描将直接加载缓存结果，如需重新扫描请点击"强制重新扫描"</p>
+                    </div>
+                    {% endif %}
+                </div>
+
+                <div id="scanProgress" class="progress-box" style="display: none;">
+                    <div class="progress-icon spinning">&#x23F3;</div>
+                    <h3>正在扫描...</h3>
+                    <p>这可能需要几分钟时间，请耐心等待</p>
+                    <div class="progress-bar">
+                        <div class="progress-fill"></div>
+                    </div>
+                </div>
+
+                <div id="afterScan" class="summary-cards" style="display: none;">
+                    <div class="summary-card">
+                        <div class="card-icon">&#x1F4C4;</div>
+                        <div class="card-content">
+                            <span class="card-value" id="totalFiles">0</span>
+                            <span class="card-label">文件总数</span>
+                        </div>
+                    </div>
+                    <div class="summary-card">
+                        <div class="card-icon">&#x1F4C1;</div>
+                        <div class="card-content">
+                            <span class="card-value" id="totalFolders">0</span>
+                            <span class="card-label">文件夹数</span>
+                        </div>
+                    </div>
+                    <div class="summary-card">
+                        <div class="card-icon">&#x1F4BE;</div>
+                        <div class="card-content">
+                            <span class="card-value" id="totalSize">0</span>
+                            <span class="card-label">总占用空间</span>
+                        </div>
+                    </div>
+                    <div class="summary-card warning">
+                        <div class="card-icon">&#x1F4CB;</div>
+                        <div class="card-content">
+                            <span class="card-value" id="duplicateGroups">0</span>
+                            <span class="card-label">重复文件组</span>
+                        </div>
+                    </div>
+                    <div class="summary-card warning">
+                        <div class="card-icon">&#x1F4C1;</div>
+                        <div class="card-content">
+                            <span class="card-value" id="duplicateFolderGroups">0</span>
+                            <span class="card-label">重复文件夹组</span>
+                        </div>
+                    </div>
+                    <div class="summary-card success">
+                        <div class="card-icon">&#x1F4B0;</div>
+                        <div class="card-content">
+                            <span class="card-value" id="wastedSpace">0</span>
+                            <span class="card-label">可节省空间</span>
+                        </div>
+                    </div>
+                    <div class="summary-card">
+                        <div class="card-icon">&#x1F4E6;</div>
+                        <div class="card-content">
+                            <span class="card-value" id="largeFileCount">0</span>
+                            <span class="card-label">大文件数量</span>
+                        </div>
+                    </div>
+                    <div class="summary-card danger">
+                        <div class="card-icon">&#x26A0;</div>
+                        <div class="card-content">
+                            <span class="card-value" id="executableCount">0</span>
+                            <span class="card-label">可执行文件</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 重复文件区域 -->
+            <section id="duplicates-section" class="content-section">
+                <h2>重复文件</h2>
+                <div class="section-toolbar">
+                    <span class="result-count">共 <span id="dupFileCount">0</span> 组重复文件</span>
+                    <button class="btn-secondary" id="copyDupFilePaths">复制选中路径</button>
+                    <button class="btn-danger" id="deleteSelectedDupFiles" disabled>删除选中文件</button>
+                </div>
+                <div id="duplicateFilesList" class="file-groups">
+                    <div class="empty-state">请先进行扫描</div>
+                </div>
+            </section>
+
+            <!-- 重复文件夹区域 -->
+            <section id="duplicate-folders-section" class="content-section">
+                <h2>重复文件夹</h2>
+                <div class="section-toolbar">
+                    <span class="result-count">共 <span id="dupFolderCount">0</span> 组重复文件夹</span>
+                    <button class="btn-secondary" id="copyDupFolderPaths">复制选中路径</button>
+                    <button class="btn-danger" id="deleteSelectedDupFolders" disabled>删除选中文件夹</button>
+                </div>
+                <div id="duplicateFoldersList" class="file-groups">
+                    <div class="empty-state">请先进行扫描</div>
+                </div>
+            </section>
+
+            <!-- 大文件区域 -->
+            <section id="large-files-section" class="content-section">
+                <h2>大文件 (&gt;100MB)</h2>
+                <div class="section-toolbar">
+                    <div class="category-tabs" id="largeCategoryTabs">
+                        <button class="tab-btn active" data-category="all">全部</button>
+                        <button class="tab-btn" data-category="video">视频</button>
+                        <button class="tab-btn" data-category="archive">压缩包</button>
+                        <button class="tab-btn" data-category="disk_image">镜像</button>
+                        <button class="tab-btn" data-category="other">其他</button>
+                    </div>
+                    <button class="btn-secondary" id="copyLargePaths">复制选中路径</button>
+                    <button class="btn-danger" id="deleteSelectedLarge" disabled>删除选中</button>
+                </div>
+                <div id="largeFilesList" class="file-list-table">
+                    <div class="empty-state">请先进行扫描</div>
+                </div>
+            </section>
+
+            <!-- 可执行文件区域 -->
+            <section id="executables-section" class="content-section">
+                <h2>可执行文件</h2>
+                <div class="section-toolbar">
+                    <span class="result-count">共 <span id="execCount">0</span> 个可执行文件</span>
+                    <button class="btn-secondary" id="copyExecPaths">复制选中路径</button>
+                    <button class="btn-danger" id="deleteSelectedExec" disabled>删除选中</button>
+                </div>
+                <div id="executablesList" class="file-list-table">
+                    <div class="empty-state">请先进行扫描</div>
+                </div>
+            </section>
+
+            <!-- 文件分类区域 -->
+            <section id="categories-section" class="content-section">
+                <h2>文件分类统计</h2>
+                <div id="categoryStats" class="category-stats">
+                    <div class="empty-state">请先进行扫描</div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- 删除确认对话框 -->
+    <div id="deleteModal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>确认删除</h3>
+                <button class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p>确定要删除选中的 <span id="deleteCount">0</span> 个文件吗？</p>
+                <p class="warning-text">此操作不可撤销！</p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" id="cancelDelete">取消</button>
+                <button class="btn-danger" id="confirmDelete">确认删除</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>

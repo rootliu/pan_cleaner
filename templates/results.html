@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>扫描结果 - 网盘文件清理工具</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="results-container">
+        <header class="results-header">
+            <h1>扫描结果</h1>
+            <div class="header-actions">
+                <a href="/dashboard" class="btn-secondary">返回控制面板</a>
+                <button id="downloadReport" class="btn-primary">下载报告</button>
+            </div>
+        </header>
+
+        <main class="results-main">
+            <div id="resultsContent">
+                加载中...
+            </div>
+        </main>
+    </div>
+
+    <script>
+        document.getElementById('downloadReport').addEventListener('click', function() {
+            window.location.href = '/api/report';
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Project specific
+cache/
+reports/
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Screenshots (test files)
+*.png
+*.jpg
+*.jpeg
