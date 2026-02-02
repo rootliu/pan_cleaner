@@ -112,26 +112,57 @@ class BaiduProvider(BaseProvider):
         """获取bdstoken，用于删除等需要验证的操作"""
         try:
             import re
-            # 方法1: 从主页获取
+
+            # 方法1: 从API直接获取（最可靠）
+            try:
+                response = self.session.get(f'{self.API_BASE}/api/gettemplatevariable?fields=[%22bdstoken%22]')
+                if response.status_code == 200:
+                    data = response.json()
+                    print(f'[DEBUG] gettemplatevariable响应: {data}')
+                    if data.get('errno') == 0 and data.get('result'):
+                        token = data['result'].get('bdstoken', '')
+                        if token:
+                            self.bdstoken = token
+                            print(f'[DEBUG] 从API获取bdstoken成功: {self.bdstoken[:8]}...')
+                            return
+            except Exception as e:
+                print(f'[DEBUG] API获取bdstoken失败: {e}')
+
+            # 方法2: 从主页获取
             response = self.session.get(f'{self.API_BASE}/disk/home')
             if response.status_code == 200:
-                # 尝试从页面中提取bdstoken
-                match = re.search(r'"bdstoken"\s*:\s*"([^"]+)"', response.text)
-                if match:
-                    self.bdstoken = match.group(1)
-                    return
+                # 尝试多种正则模式
+                patterns = [
+                    r'"bdstoken"\s*:\s*"([a-f0-9]{32})"',
+                    r"'bdstoken'\s*:\s*'([a-f0-9]{32})'",
+                    r'bdstoken\s*=\s*["\']([a-f0-9]{32})["\']',
+                    r'bdstoken&quot;:&quot;([a-f0-9]{32})&quot;',
+                    r'"bdstoken":"([a-f0-9]{32})"',
+                ]
 
-                match = re.search(r'bdstoken\s*=\s*["\']([^"\']+)["\']', response.text)
-                if match:
-                    self.bdstoken = match.group(1)
-                    return
+                for pattern in patterns:
+                    match = re.search(pattern, response.text)
+                    if match:
+                        self.bdstoken = match.group(1)
+                        print(f'[DEBUG] 从页面获取bdstoken成功(pattern={pattern[:20]}...): {self.bdstoken[:8]}...')
+                        return
 
-            # 方法2: 从API获取
-            response = self.session.get(f'{self.API_BASE}/api/gettemplatevariable?fields=[%22bdstoken%22]')
-            if response.status_code == 200:
-                data = response.json()
-                if data.get('errno') == 0 and data.get('result'):
-                    self.bdstoken = data['result'].get('bdstoken', '')
+                print(f'[DEBUG] 页面中未找到bdstoken，页面长度: {len(response.text)}')
+
+            # 方法3: 从disk/main页面获取
+            try:
+                response = self.session.get(f'{self.API_BASE}/disk/main')
+                if response.status_code == 200:
+                    match = re.search(r'"bdstoken"\s*:\s*"([a-f0-9]{32})"', response.text)
+                    if match:
+                        self.bdstoken = match.group(1)
+                        print(f'[DEBUG] 从main页面获取bdstoken成功: {self.bdstoken[:8]}...')
+                        return
+            except Exception as e:
+                print(f'[DEBUG] main页面获取bdstoken失败: {e}')
+
+            print(f'[WARNING] 所有方法都未能获取bdstoken')
+
         except Exception as e:
             print(f'获取bdstoken失败: {str(e)}')
 
@@ -317,96 +348,208 @@ class BaiduProvider(BaseProvider):
             if not self.bdstoken:
                 self._get_bdstoken()
 
-            # 构建删除请求
-            url = f'{self.API_BASE}/api/filemanager?opera=delete'
-            if self.bdstoken:
-                url += f'&bdstoken={self.bdstoken}'
+            print(f'[DEBUG] 删除文件: {paths}')
+            print(f'[DEBUG] bdstoken: {self.bdstoken[:8] if self.bdstoken else "None"}...')
 
-            # filelist 需要是正确格式的JSON数组
-            filelist_json = json.dumps(paths, ensure_ascii=False)
+            # 收集所有方法的错误信息
+            errors = []
 
-            # 使用 form data 格式
-            # async=2 表示使用异步删除模式，可能更不容易触发反作弊
-            data = {
-                'filelist': filelist_json,
-                'async': '2',
-                'channel': 'chunlei',
-                'web': '1',
-                'app_id': '250528',
-                'clienttype': '0',
-                'newVerify': '1'
-            }
+            # 尝试方法1: 标准API删除
+            result = self._try_delete_method1(paths)
+            if result.get('success'):
+                return result
+            errors.append(f"方法1(errno={result.get('errno', '?')})")
 
-            # 添加必要的请求头
-            headers = {
-                'Content-Type': 'application/x-www-form-urlencoded',
-                'Referer': f'{self.API_BASE}/disk/home',
-                'Origin': self.API_BASE,
-                'Accept': 'application/json, text/javascript, */*; q=0.01',
-                'X-Requested-With': 'XMLHttpRequest'
-            }
+            print(f'[DEBUG] 方法1失败，尝试方法2')
 
-            response = self.session.post(url, data=data, headers=headers)
+            # 尝试方法2: 不同的API端点
+            result = self._try_delete_method2(paths)
+            if result.get('success'):
+                return result
+            errors.append(f"方法2(errno={result.get('errno', '?')})")
 
-            if response.status_code != 200:
-                return {
-                    'success': False,
-                    'message': f'请求失败: HTTP {response.status_code}',
-                    'deleted': [],
-                    'failed': paths
-                }
+            print(f'[DEBUG] 方法2失败，尝试方法3')
 
-            result = response.json()
-            errno = result.get('errno', -1)
+            # 尝试方法3: xpan接口
+            result = self._try_delete_method3(paths)
+            if result.get('success'):
+                return result
+            errors.append(f"方法3(errno={result.get('errno', '?')})")
 
-            # 错误码说明
-            error_messages = {
-                0: '删除成功',
-                -1: '参数错误',
-                -3: '文件不存在',
-                -6: '身份验证失败，请重新登录',
-                -7: '文件路径非法或包含特殊字符',
-                -8: '目录满了',
-                -9: '空间不足',
-                -10: '文件夹限制',
-                -70: '请求格式错误',
-                2: '参数错误',
-                12: '批量处理失败',
-                -21: '功能暂时不可用',
-                111: '有其他用户操作，请稍后重试',
-                -32: '文件已存在',
-                -33: '文件不存在',
-                132: '请求过于频繁或需要验证，请在网页端操作或稍后重试',
-                133: '文件被锁定，无法删除',
-                31034: '命中反作弊，请在网页端手动删除',
-                31045: '操作太频繁，请稍后重试',
-            }
-
-            # 打印调试信息
-            print(f'删除API响应: errno={errno}, errmsg={result.get("errmsg", "")}, result={result}')
-
-            if errno == 0:
-                return {
-                    'success': True,
-                    'message': '删除成功',
-                    'deleted': paths,
-                    'failed': []
-                }
-            else:
-                error_msg = result.get('errmsg') or error_messages.get(errno, f'未知错误(errno={errno})')
-                return {
-                    'success': False,
-                    'message': f'删除失败: {error_msg}',
-                    'deleted': [],
-                    'failed': paths
-                }
+            # 所有方法都失败，返回详细错误
+            result['message'] = f"删除失败 - {', '.join(errors)}。{result.get('message', '')}"
+            return result
 
         except Exception as e:
+            import traceback
+            print(f'[ERROR] 删除异常: {str(e)}')
+            print(traceback.format_exc())
             return {
                 'success': False,
                 'message': f'删除失败: {str(e)}',
                 'deleted': [],
                 'failed': paths
+            }
+
+    def _try_delete_method1(self, paths: List[str]) -> dict:
+        """方法1: 标准filemanager API"""
+        import json
+
+        url = f'{self.API_BASE}/api/filemanager?opera=delete'
+        if self.bdstoken:
+            url += f'&bdstoken={self.bdstoken}'
+
+        filelist_json = json.dumps(paths, ensure_ascii=False)
+
+        data = {
+            'filelist': filelist_json,
+            'async': '0',  # 同步删除
+            'channel': 'chunlei',
+            'web': '1',
+            'app_id': '250528',
+            'clienttype': '0',
+        }
+
+        headers = {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Referer': f'{self.API_BASE}/disk/home',
+            'Origin': self.API_BASE,
+            'Accept': 'application/json, text/javascript, */*; q=0.01',
+            'X-Requested-With': 'XMLHttpRequest'
+        }
+
+        response = self.session.post(url, data=data, headers=headers)
+        return self._parse_delete_response(response, paths, "方法1")
+
+    def _try_delete_method2(self, paths: List[str]) -> dict:
+        """方法2: 带有更多参数的filemanager API"""
+        import json
+
+        url = f'{self.API_BASE}/api/filemanager'
+
+        params = {
+            'opera': 'delete',
+            'async': '2',
+            'onnest': 'fail',
+            'channel': 'chunlei',
+            'web': '1',
+            'app_id': '250528',
+            'bdstoken': self.bdstoken or '',
+            'clienttype': '0',
+        }
+
+        filelist_json = json.dumps(paths, ensure_ascii=False)
+
+        data = {
+            'filelist': filelist_json,
+        }
+
+        headers = {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Referer': f'{self.API_BASE}/disk/home',
+            'Origin': self.API_BASE,
+            'Accept': 'application/json, text/javascript, */*; q=0.01',
+            'X-Requested-With': 'XMLHttpRequest'
+        }
+
+        response = self.session.post(url, params=params, data=data, headers=headers)
+        return self._parse_delete_response(response, paths, "方法2")
+
+    def _try_delete_method3(self, paths: List[str]) -> dict:
+        """方法3: xpan/file接口（REST API风格）"""
+        import json
+
+        url = f'{self.API_BASE}/rest/2.0/xpan/file'
+
+        params = {
+            'method': 'filemanager',
+            'opera': 'delete',
+        }
+
+        filelist_json = json.dumps(paths, ensure_ascii=False)
+
+        data = {
+            'async': '0',
+            'filelist': filelist_json,
+            'ondup': 'fail',
+        }
+
+        headers = {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Referer': f'{self.API_BASE}/disk/home',
+            'Origin': self.API_BASE,
+        }
+
+        response = self.session.post(url, params=params, data=data, headers=headers)
+        return self._parse_delete_response(response, paths, "方法3")
+
+    def _parse_delete_response(self, response, paths: List[str], method_name: str) -> dict:
+        """解析删除API响应"""
+        if response.status_code != 200:
+            print(f'[DEBUG] {method_name} HTTP错误: {response.status_code}')
+            return {
+                'success': False,
+                'message': f'请求失败: HTTP {response.status_code}',
+                'deleted': [],
+                'failed': paths
+            }
+
+        try:
+            result = response.json()
+        except:
+            print(f'[DEBUG] {method_name} 响应不是JSON: {response.text[:200]}')
+            return {
+                'success': False,
+                'message': '响应格式错误',
+                'deleted': [],
+                'failed': paths
+            }
+
+        errno = result.get('errno', -1)
+
+        # 错误码说明
+        error_messages = {
+            0: '删除成功',
+            -1: '参数错误',
+            -3: '文件不存在',
+            -6: '身份验证失败，请重新登录',
+            -7: '文件路径非法或包含特殊字符',
+            -8: '目录满了',
+            -9: '空间不足',
+            -10: '文件夹限制',
+            -70: '请求格式错误',
+            2: '参数错误',
+            12: '批量处理失败',
+            -21: '功能暂时不可用',
+            111: '有其他用户操作，请稍后重试',
+            -32: '文件已存在',
+            -33: '文件不存在',
+            132: '请求过于频繁或触发验证，请稍后重试',
+            133: '文件被锁定，无法删除',
+            31034: '命中反作弊，请在网页端手动删除',
+            31045: '操作太频繁，请稍后重试',
+            31066: '文件不存在或已被删除',
+            31362: '该功能需要登录',
+            9019: '需要验证身份',
+        }
+
+        print(f'[DEBUG] {method_name} 响应: errno={errno}, result={result}')
+
+        if errno == 0:
+            return {
+                'success': True,
+                'message': '删除成功',
+                'deleted': paths,
+                'failed': []
+            }
+        else:
+            error_msg = result.get('errmsg') or error_messages.get(errno, f'未知错误(errno={errno})')
+            return {
+                'success': False,
+                'message': f'删除失败: {error_msg}',
+                'deleted': [],
+                'failed': paths,
+                'errno': errno
             }
 
     def get_quota(self) -> dict:
