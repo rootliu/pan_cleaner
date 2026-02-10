@@ -113,6 +113,15 @@
 
                 <div id="loginMessage" class="message" style="display: none;"></div>
             </form>
+
+            <div class="usage-tips">
+                <h3>使用说明</h3>
+                <ul>
+                    <li><strong>Cookie获取：</strong>在浏览器登录百度网盘后，按F12打开开发者工具，在Network标签页中复制任意请求的Cookie。Cookie必须包含 <code>BDUSS</code> 和 <code>STOKEN</code> 字段。</li>
+                    <li><strong>删除验证：</strong>首次使用删除功能时，百度可能要求人机验证。如遇到删除失败（错误码132），请先在浏览器中打开 <a href="https://pan.baidu.com" target="_blank">pan.baidu.com</a>，手动删除任意一个文件，完成弹出的验证框后，回到本工具即可正常删除。</li>
+                    <li><strong>扫描缓存：</strong>扫描结果会自动缓存，下次登录可直接加载，无需重复扫描。如需更新数据，请使用"强制重新扫描"。</li>
+                </ul>
+            </div>
         </div>
     </div>
 

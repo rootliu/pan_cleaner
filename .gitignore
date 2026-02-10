@@ -17,6 +17,7 @@ env/
 # Project specific
 cache/
 reports/
+logs/
 *.log
 
 # OS

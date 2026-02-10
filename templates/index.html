@@ -69,6 +69,13 @@
                 </div>
             </header>
 
+            <!-- 使用提示栏 -->
+            <div id="tipsBar" class="tips-bar">
+                <span class="tips-icon">&#x1F4A1;</span>
+                <span>首次删除文件时，百度网盘可能要求人机验证。如遇删除失败（错误码132），请先在浏览器中打开 <a href="https://pan.baidu.com" target="_blank">pan.baidu.com</a> 手动删除任意文件，完成验证后回到本工具即可正常使用。</span>
+                <button class="tips-close" onclick="this.parentElement.style.display='none'">&times;</button>
+            </div>
+
             <!-- 缓存状态提示 -->
             <div id="cacheStatus" class="cache-status" style="display: none;">
                 <span class="cache-icon">&#x1F4BE;</span>

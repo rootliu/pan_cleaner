@@ -21,6 +21,7 @@ from utils.cache import (
     save_scan_cache, load_scan_cache, clear_scan_cache,
     invalidate_cache_paths, get_cache_info
 )
+from utils.logger import log_delete_operation
 
 app = Flask(__name__)
 app.config.from_object(Config)
@@ -472,14 +473,23 @@ def delete_files():
     cleaner = FileCleaner(provider)
     result = cleaner.delete_files(paths)
 
+    provider_type = session.get('provider_type', 'baidu')
+    user_info = session.get('user_info', {})
+    provider_name = PROVIDER_TYPES.get(provider_type, '网盘')
+    username = user_info.get('username', '未知用户')
+
+    # 记录删除操作日志
+    log_delete_operation(
+        provider_name=provider_name,
+        username=username,
+        paths=paths,
+        deleted=result.get('deleted', []),
+        failed=result.get('failed', []),
+        message=result.get('message', '')
+    )
+
     # 如果有删除成功的文件，更新缓存
     if result.get('deleted'):
-        provider_type = session.get('provider_type', 'baidu')
-        user_info = session.get('user_info', {})
-        provider_name = PROVIDER_TYPES.get(provider_type, '网盘')
-        username = user_info.get('username', '未知用户')
-
-        # 从缓存中移除已删除的路径
         invalidate_cache_paths(provider_name, username, result['deleted'])
 
     return jsonify(result)

@@ -51,6 +51,11 @@ class BaiduProvider(BaseProvider):
                 'user_info': None
             }
 
+    # 删除操作必需的Cookie字段
+    REQUIRED_COOKIES_FOR_DELETE = ['BDUSS', 'STOKEN']
+    # 建议包含的Cookie字段（提高成功率）
+    RECOMMENDED_COOKIES = ['BDUSS', 'STOKEN', 'BDCLND', 'BAIDUID', 'PANWEB', 'BDUSS_BFESS', 'STOKEN_BFESS']
+
     def login_with_cookie(self, cookie_string: str) -> dict:
         """
         使用Cookie登录（推荐方式）
@@ -64,6 +69,15 @@ class BaiduProvider(BaseProvider):
                 if '=' in item:
                     key, value = item.split('=', 1)
                     cookies[key.strip()] = value.strip()
+
+            # 检查关键Cookie字段
+            missing_required = [k for k in self.REQUIRED_COOKIES_FOR_DELETE if k not in cookies]
+            missing_recommended = [k for k in self.RECOMMENDED_COOKIES if k not in cookies]
+
+            if missing_required:
+                print(f'[WARNING] Cookie缺少删除操作必需字段: {missing_required}')
+            if missing_recommended:
+                print(f'[INFO] Cookie缺少建议字段: {missing_recommended}')
 
             # 设置cookie
             for key, value in cookies.items():
@@ -90,10 +104,17 @@ class BaiduProvider(BaseProvider):
                         'vip_type': user_data.get('vip_type', 0)
                     }
 
+                    # 构建登录消息，包含Cookie完整性提示
+                    message = '登录成功'
+                    if missing_required:
+                        message += f'（警告: Cookie缺少 {", ".join(missing_required)}，删除功能可能不可用。请在浏览器中重新复制完整Cookie）'
+
                     return {
                         'success': True,
-                        'message': '登录成功',
-                        'user_info': self.user_info
+                        'message': message,
+                        'user_info': self.user_info,
+                        'cookie_warning': bool(missing_required),
+                        'missing_cookies': missing_required
                     }
 
             return {
@@ -302,6 +323,7 @@ class BaiduProvider(BaseProvider):
         batch_size = 1
         all_deleted = []
         all_failed = []
+        last_error_message = ''
 
         for i in range(0, len(paths), batch_size):
             batch = paths[i:i + batch_size]
@@ -310,15 +332,8 @@ class BaiduProvider(BaseProvider):
             all_deleted.extend(result.get('deleted', []))
             all_failed.extend(result.get('failed', []))
 
-            # 如果遇到反作弊错误，停止继续删除
-            if not result.get('success') and '反作弊' in result.get('message', ''):
-                all_failed.extend(paths[i + batch_size:])
-                return {
-                    'success': False,
-                    'message': result.get('message'),
-                    'deleted': all_deleted,
-                    'failed': all_failed
-                }
+            if not result.get('success'):
+                last_error_message = result.get('message', '')
 
             # 批次之间等待1秒，避免请求过快
             if i + batch_size < len(paths):
@@ -327,7 +342,7 @@ class BaiduProvider(BaseProvider):
         if all_failed:
             return {
                 'success': False,
-                'message': f'部分删除失败: 成功{len(all_deleted)}个，失败{len(all_failed)}个',
+                'message': f'成功{len(all_deleted)}个，失败{len(all_failed)}个。{last_error_message}',
                 'deleted': all_deleted,
                 'failed': all_failed
             }
@@ -524,7 +539,7 @@ class BaiduProvider(BaseProvider):
             111: '有其他用户操作，请稍后重试',
             -32: '文件已存在',
             -33: '文件不存在',
-            132: '请求过于频繁或触发验证，请稍后重试',
+            132: '该账号需要人机验证。请先在浏览器中打开百度网盘(pan.baidu.com)，手动删除任意一个文件，完成弹出的验证框后，回到本工具即可正常删除',
             133: '文件被锁定，无法删除',
             31034: '命中反作弊，请在网页端手动删除',
             31045: '操作太频繁，请稍后重试',
