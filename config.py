@@ -2,6 +2,8 @@
 网盘文件清理工具 - 配置文件
 """
 
+import os
+
 # 大文件阈值（100MB）
 LARGE_FILE_THRESHOLD = 100 * 1024 * 1024
 
@@ -40,5 +42,7 @@ PROVIDER_TYPES = {
 
 # Flask 配置
 class Config:
-    SECRET_KEY = 'pan-cleaner-secret-key-change-in-production'
-    SESSION_TYPE = 'filesystem'
+    SECRET_KEY = os.environ.get('SECRET_KEY', 'pan-cleaner-dev-key-change-me')
+    SESSION_COOKIE_HTTPONLY = True
+    SESSION_COOKIE_SAMESITE = 'Lax'
+    SESSION_COOKIE_SECURE = os.environ.get('VERCEL', '') != ''

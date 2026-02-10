@@ -2,10 +2,9 @@
 网盘文件清理工具 - Flask 主应用
 """
 
-import os
-import json
+import uuid
 from datetime import datetime
-from flask import Flask, render_template, request, jsonify, session, redirect, url_for, send_file
+from flask import Flask, render_template, request, jsonify, session, redirect, url_for, make_response
 from config import Config, PROVIDER_TYPES
 
 # 导入核心模块
@@ -22,25 +21,70 @@ from utils.cache import (
     invalidate_cache_paths, get_cache_info
 )
 from utils.logger import log_delete_operation
+from utils.supabase_client import get_supabase
 
 app = Flask(__name__)
 app.config.from_object(Config)
 
-# 全局存储（实际生产环境应使用Redis等）
-providers = {}
-scan_results = {}
+
+def get_session_id() -> str:
+    """从 Flask session cookie 获取或创建会话 ID"""
+    if 'session_id' not in session:
+        session['session_id'] = str(uuid.uuid4())
+    return session['session_id']
 
 
-def get_provider(provider_type: str):
-    """获取网盘提供者实例"""
+def get_or_create_provider():
+    """
+    从 Supabase user_sessions 恢复 Provider 实例
+    每次请求重建（serverless 无持久内存）
+    """
+    sid = get_session_id()
+    provider_type = session.get('provider_type', 'baidu')
+
+    try:
+        supabase = get_supabase()
+        result = supabase.table('user_sessions').select('*').eq(
+            'session_id', sid
+        ).execute()
+
+        if not result.data or len(result.data) == 0:
+            return None
+
+        row = result.data[0]
+        cookie_string = row.get('cookie_string', '')
+        bdstoken = row.get('bdstoken')
+        user_info = row.get('user_info', {})
+
+        if not cookie_string:
+            return None
+
+        provider = _create_provider(provider_type)
+        if not provider:
+            return None
+
+        provider.restore_session(cookie_string, bdstoken, user_info)
+
+        # 更新最后访问时间
+        supabase.table('user_sessions').update({
+            'last_accessed': datetime.now().isoformat()
+        }).eq('session_id', sid).execute()
+
+        return provider
+    except Exception as e:
+        print(f'恢复 Provider 失败: {str(e)}')
+        return None
+
+
+def _create_provider(provider_type: str):
+    """创建网盘提供者实例"""
     if provider_type == 'baidu':
         return BaiduProvider()
     elif provider_type == 'aliyun':
         return AliyunProvider()
     elif provider_type == 'quark':
         return QuarkProvider()
-    else:
-        return None
+    return None
 
 
 @app.route('/')
@@ -62,16 +106,17 @@ def login():
     provider_type = data.get('provider_type', 'baidu')
     login_method = data.get('login_method', 'cookie')
 
-    provider = get_provider(provider_type)
+    provider = _create_provider(provider_type)
     if not provider:
         return jsonify({'success': False, 'message': '不支持的网盘类型'})
 
     result = {'success': False, 'message': '登录失败'}
 
+    cookie_string = ''
     if login_method == 'cookie':
-        cookie = data.get('cookie', '')
+        cookie_string = data.get('cookie', '')
         if hasattr(provider, 'login_with_cookie'):
-            result = provider.login_with_cookie(cookie)
+            result = provider.login_with_cookie(cookie_string)
     elif login_method == 'password':
         username = data.get('username', '')
         password = data.get('password', '')
@@ -82,12 +127,29 @@ def login():
         result = provider.login_with_sms(phone, sms_code)
 
     if result.get('success'):
+        sid = get_session_id()
         session['logged_in'] = True
         session['provider_type'] = provider_type
         session['user_info'] = result.get('user_info', {})
-        # 存储provider实例
-        session_id = session.sid if hasattr(session, 'sid') else 'default'
-        providers[session_id] = provider
+
+        # 将凭据保存到 Supabase user_sessions
+        try:
+            supabase = get_supabase()
+            session_data = {
+                'session_id': sid,
+                'provider_type': provider_type,
+                'cookie_string': cookie_string,
+                'bdstoken': provider.bdstoken or '',
+                'user_info': result.get('user_info', {}),
+                'created_at': datetime.now().isoformat(),
+                'last_accessed': datetime.now().isoformat()
+            }
+            supabase.table('user_sessions').upsert(
+                session_data,
+                on_conflict='session_id'
+            ).execute()
+        except Exception as e:
+            print(f'保存会话失败: {str(e)}')
 
     return jsonify(result)
 
@@ -95,6 +157,17 @@ def login():
 @app.route('/logout')
 def logout():
     """登出"""
+    # 清理 Supabase 中的会话记录
+    sid = session.get('session_id')
+    if sid:
+        try:
+            supabase = get_supabase()
+            supabase.table('user_sessions').delete().eq(
+                'session_id', sid
+            ).execute()
+        except Exception:
+            pass
+
     session.clear()
     return redirect(url_for('login'))
 
@@ -162,11 +235,7 @@ def load_cache():
     if not cache_data:
         return jsonify({'success': False, 'message': '没有找到缓存数据'})
 
-    session_id = session.sid if hasattr(session, 'sid') else 'default'
     cached_results = cache_data.get('scan_results', {})
-
-    # 将缓存数据加载到内存
-    scan_results[session_id] = cached_results
 
     # 返回摘要
     statistics = cached_results.get('statistics', {})
@@ -221,8 +290,7 @@ def scan():
     if 'logged_in' not in session or not session['logged_in']:
         return jsonify({'success': False, 'message': '未登录'})
 
-    session_id = session.sid if hasattr(session, 'sid') else 'default'
-    provider = providers.get(session_id)
+    provider = get_or_create_provider()
 
     if not provider or not provider.is_logged_in:
         return jsonify({'success': False, 'message': '登录已过期，请重新登录'})
@@ -241,7 +309,6 @@ def scan():
         cache_data = load_scan_cache(provider_name, username)
         if cache_data:
             cached_results = cache_data.get('scan_results', {})
-            scan_results[session_id] = cached_results
 
             statistics = cached_results.get('statistics', {})
             duplicate_files = cached_results.get('duplicate_files', [])
@@ -292,17 +359,7 @@ def scan():
         # 计算浪费空间
         wasted_space = duplicate_finder.get_total_wasted_space()
 
-        # 存储结果到内存
-        scan_results[session_id] = {
-            'statistics': statistics,
-            'duplicate_files': duplicate_files,
-            'duplicate_folders': duplicate_folders,
-            'large_files': large_files,
-            'executables': executables,
-            'scan_time': datetime.now().isoformat()
-        }
-
-        # 转换为可缓存的格式并保存
+        # 转换为可缓存的格式并保存到 Supabase
         cacheable_results = {
             'statistics': statistics,
             'duplicate_files': [
@@ -335,7 +392,7 @@ def scan():
             ]
         }
 
-        # 保存到缓存
+        # 保存到 Supabase 缓存
         save_scan_cache(provider_name, username, cacheable_results)
 
         # 返回摘要
@@ -372,64 +429,69 @@ def get_file_attr(f, attr, default=None):
 
 @app.route('/api/results/<result_type>')
 def get_results(result_type):
-    """获取详细结果"""
+    """获取详细结果（从 Supabase 缓存加载）"""
     if 'logged_in' not in session or not session['logged_in']:
         return jsonify({'success': False, 'message': '未登录'})
 
-    session_id = session.sid if hasattr(session, 'sid') else 'default'
-    results = scan_results.get(session_id)
+    provider_type = session.get('provider_type', 'baidu')
+    user_info = session.get('user_info', {})
+    provider_name = PROVIDER_TYPES.get(provider_type, '网盘')
+    username = user_info.get('username', '未知用户')
 
-    if not results:
+    # 从 Supabase 缓存加载结果
+    cache_data = load_scan_cache(provider_name, username)
+    if not cache_data:
         return jsonify({'success': False, 'message': '请先进行扫描'})
 
+    results = cache_data.get('scan_results', {})
+
     if result_type == 'statistics':
-        return jsonify({'success': True, 'data': results['statistics']})
+        return jsonify({'success': True, 'data': results.get('statistics', {})})
 
     elif result_type == 'duplicate_files':
-        # 转换为可序列化格式（支持对象和字典两种格式）
         data = []
-        for dup in results['duplicate_files']:
+        for dup in results.get('duplicate_files', []):
             files_data = []
-            for f in dup['files']:
+            for f in dup.get('files', []):
                 files_data.append({
                     'path': get_file_attr(f, 'path'),
                     'name': get_file_attr(f, 'name'),
                     'size': get_file_attr(f, 'size', 0)
                 })
             data.append({
-                'hash': dup['hash'],
-                'size': dup['size'],
-                'size_formatted': format_size(dup['size']),
-                'count': dup['count'],
-                'wasted_space': dup['wasted_space'],
-                'wasted_space_formatted': format_size(dup['wasted_space']),
+                'hash': dup.get('hash', ''),
+                'size': dup.get('size', 0),
+                'size_formatted': format_size(dup.get('size', 0)),
+                'count': dup.get('count', 0),
+                'wasted_space': dup.get('wasted_space', 0),
+                'wasted_space_formatted': format_size(dup.get('wasted_space', 0)),
                 'files': files_data
             })
         return jsonify({'success': True, 'data': data})
 
     elif result_type == 'duplicate_folders':
         data = []
-        for dup in results['duplicate_folders']:
+        for dup in results.get('duplicate_folders', []):
             folders_data = []
-            for f in dup['folders']:
+            for f in dup.get('folders', []):
                 folders_data.append({
                     'path': get_file_attr(f, 'path'),
                     'name': get_file_attr(f, 'name')
                 })
             data.append({
-                'content_hash': dup['content_hash'],
-                'count': dup['count'],
+                'content_hash': dup.get('content_hash', ''),
+                'count': dup.get('count', 0),
                 'size': dup.get('size', 0),
                 'size_formatted': format_size(dup.get('size', 0)),
-                'wasted_space': dup['wasted_space'],
-                'wasted_space_formatted': format_size(dup['wasted_space']),
+                'wasted_space': dup.get('wasted_space', 0),
+                'wasted_space_formatted': format_size(dup.get('wasted_space', 0)),
                 'folders': folders_data
             })
         return jsonify({'success': True, 'data': data})
 
     elif result_type == 'large_files':
         data = {}
-        for category, files in results['large_files'].items():
+        for category, files in results.get('large_files', {}).items():
             data[category] = [{
                 'path': get_file_attr(f, 'path'),
                 'name': get_file_attr(f, 'name'),
@@ -446,7 +508,7 @@ def get_results(result_type):
             'size': get_file_attr(f, 'size', 0),
             'size_formatted': format_size(get_file_attr(f, 'size', 0)),
             'extension': get_file_attr(f, 'extension', '')
-        } for f in results['executables']]
+        } for f in results.get('executables', [])]
         return jsonify({'success': True, 'data': data})
 
     return jsonify({'success': False, 'message': '无效的结果类型'})
@@ -458,8 +520,7 @@ def delete_files():
     if 'logged_in' not in session or not session['logged_in']:
         return jsonify({'success': False, 'message': '未登录'})
 
-    session_id = session.sid if hasattr(session, 'sid') else 'default'
-    provider = providers.get(session_id)
+    provider = get_or_create_provider()
 
     if not provider or not provider.is_logged_in:
         return jsonify({'success': False, 'message': '登录已过期'})
@@ -497,39 +558,37 @@ def delete_files():
 
 @app.route('/api/report')
 def generate_report():
-    """生成HTML报告"""
+    """生成HTML报告（直接返回HTML，不写文件）"""
     if 'logged_in' not in session or not session['logged_in']:
         return jsonify({'success': False, 'message': '未登录'})
 
-    session_id = session.sid if hasattr(session, 'sid') else 'default'
-    results = scan_results.get(session_id)
+    provider_type = session.get('provider_type', 'baidu')
+    user_info = session.get('user_info', {})
+    provider_name = PROVIDER_TYPES.get(provider_type, '网盘')
+    username = user_info.get('username', '未知用户')
 
-    if not results:
+    # 从 Supabase 缓存加载结果
+    cache_data = load_scan_cache(provider_name, username)
+    if not cache_data:
         return jsonify({'success': False, 'message': '请先进行扫描'})
 
-    provider_type = session.get('provider_type', 'baidu')
-    provider_name = PROVIDER_TYPES.get(provider_type, '网盘')
+    results = cache_data.get('scan_results', {})
 
     html = generate_html_report(
-        statistics=results['statistics'],
-        duplicate_files=results['duplicate_files'],
-        duplicate_folders=results['duplicate_folders'],
-        large_files=results['large_files'],
-        executables=results['executables'],
+        statistics=results.get('statistics', {}),
+        duplicate_files=results.get('duplicate_files', []),
+        duplicate_folders=results.get('duplicate_folders', []),
+        large_files=results.get('large_files', {}),
+        executables=results.get('executables', []),
         provider_name=provider_name
     )
 
-    # 保存报告文件
-    report_dir = os.path.join(os.path.dirname(__file__), 'reports')
-    os.makedirs(report_dir, exist_ok=True)
-
+    # 直接返回 HTML（serverless 无文件系统）
     report_filename = f'report_{datetime.now().strftime("%Y%m%d_%H%M%S")}.html'
-    report_path = os.path.join(report_dir, report_filename)
-
-    with open(report_path, 'w', encoding='utf-8') as f:
-        f.write(html)
-
-    return send_file(report_path, as_attachment=True, download_name=report_filename)
+    response = make_response(html)
+    response.headers['Content-Type'] = 'text/html; charset=utf-8'
+    response.headers['Content-Disposition'] = f'attachment; filename="{report_filename}"'
+    return response
 
 
 @app.route('/results')

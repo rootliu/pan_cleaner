@@ -187,6 +187,27 @@ class BaiduProvider(BaseProvider):
         except Exception as e:
             print(f'获取bdstoken失败: {str(e)}')
 
+    def restore_session(self, cookie_string: str, bdstoken: str = None, user_info: dict = None):
+        """
+        从保存的凭据恢复会话（轻量级，不调用百度API验证）
+        用于 Vercel serverless 环境中每次请求重建 Provider 状态
+
+        Args:
+            cookie_string: 完整的cookie字符串
+            bdstoken: 之前获取的bdstoken
+            user_info: 之前获取的用户信息字典
+        """
+        # 解析并设置cookie
+        for item in cookie_string.split(';'):
+            item = item.strip()
+            if '=' in item:
+                key, value = item.split('=', 1)
+                self.session.cookies.set(key.strip(), value.strip())
+
+        self.is_logged_in = True
+        self.bdstoken = bdstoken
+        self.user_info = user_info or {}
+
     def send_sms_code(self, phone: str) -> dict:
         """发送短信验证码"""
         # 百度网盘短信验证需要特殊处理

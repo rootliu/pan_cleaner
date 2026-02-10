@@ -7,6 +7,13 @@ from typing import Dict, List
 from .file_utils import format_size
 
 
+def _get_attr(obj, attr, default=None):
+    """安全获取属性（支持对象和字典两种格式）"""
+    if isinstance(obj, dict):
+        return obj.get(attr, default)
+    return getattr(obj, attr, default)
+
+
 def generate_html_report(
     statistics: Dict,
     duplicate_files: List[Dict],
@@ -34,10 +41,10 @@ def generate_html_report(
     duplicate_folder_wasted = sum(d['wasted_space'] for d in duplicate_folders)
 
     large_file_count = sum(len(files) for files in large_files.values())
-    large_file_size = sum(sum(f.size for f in files) for files in large_files.values())
+    large_file_size = sum(sum(_get_attr(f, 'size', 0) for f in files) for files in large_files.values())
 
     executable_count = len(executables)
-    executable_size = sum(f.size for f in executables)
+    executable_size = sum(_get_attr(f, 'size', 0) for f in executables)
 
     # 生成分类统计HTML
     category_stats = statistics.get('category_stats', {})
@@ -62,7 +69,7 @@ def generate_html_report(
     for i, dup in enumerate(duplicate_files[:100], 1):  # 最多显示100组
         files_html = '<ul class="file-list">'
         for f in dup['files']:
-            files_html += f'<li>{f.path} ({format_size(f.size)})</li>'
+            files_html += f'<li>{_get_attr(f, "path")} ({format_size(_get_attr(f, "size", 0))})</li>'
         files_html += '</ul>'
 
         duplicate_file_rows += f'''
@@ -80,7 +87,7 @@ def generate_html_report(
     for i, dup in enumerate(duplicate_folders[:50], 1):
         folders_html = '<ul class="file-list">'
         for f in dup['folders']:
-            folders_html += f'<li>{f.path}</li>'
+            folders_html += f'<li>{_get_attr(f, "path")}</li>'
         folders_html += '</ul>'
 
         duplicate_folder_rows += f'''
@@ -113,9 +120,9 @@ def generate_html_report(
             rows += f'''
             <tr>
                 <td>{i}</td>
-                <td>{f.name}</td>
-                <td>{f.path}</td>
-                <td>{format_size(f.size)}</td>
+                <td>{_get_attr(f, "name")}</td>
+                <td>{_get_attr(f, "path")}</td>
+                <td>{format_size(_get_attr(f, "size", 0))}</td>
             </tr>
             '''
 
@@ -142,10 +149,10 @@ def generate_html_report(
         executable_rows += f'''
         <tr>
             <td>{i}</td>
-            <td>{f.name}</td>
-            <td>.{f.extension}</td>
-            <td>{f.path}</td>
-            <td>{format_size(f.size)}</td>
+            <td>{_get_attr(f, "name")}</td>
+            <td>.{_get_attr(f, "extension", "")}</td>
+            <td>{_get_attr(f, "path")}</td>
+            <td>{format_size(_get_attr(f, "size", 0))}</td>
         </tr>
         '''
 
