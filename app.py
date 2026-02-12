@@ -52,18 +52,51 @@ def get_or_create_provider():
             return None
 
         row = result.data[0]
-        cookie_string = row.get('cookie_string', '')
-        bdstoken = row.get('bdstoken')
         user_info = row.get('user_info', {})
-
-        if not cookie_string:
-            return None
 
         provider = _create_provider(provider_type)
         if not provider:
             return None
 
-        provider.restore_session(cookie_string, bdstoken, user_info)
+        if provider_type == 'aliyun':
+            refresh_token = row.get('refresh_token', '')
+            access_token = row.get('access_token', '')
+            drive_id = row.get('drive_id', '')
+            token_expires_at = row.get('token_expires_at')
+
+            if not refresh_token:
+                return None
+
+            provider.restore_session(
+                refresh_token=refresh_token,
+                access_token=access_token,
+                drive_id=drive_id,
+                user_info=user_info,
+                token_expires_at=token_expires_at,
+            )
+
+            # 设置 token 刷新回调（持久化新 token 到 Supabase）
+            def on_token_refreshed(new_refresh, new_access, new_expires):
+                try:
+                    get_supabase().table('user_sessions').update({
+                        'refresh_token': new_refresh,
+                        'access_token': new_access,
+                        'token_expires_at': new_expires,
+                        'last_accessed': datetime.now().isoformat(),
+                    }).eq('session_id', sid).execute()
+                except Exception as e:
+                    print(f'持久化 token 失败: {str(e)}')
+
+            provider.on_token_refreshed = on_token_refreshed
+        else:
+            # 百度等基于 cookie 的 provider
+            cookie_string = row.get('cookie_string', '')
+            bdstoken = row.get('bdstoken')
+
+            if not cookie_string:
+                return None
+
+            provider.restore_session(cookie_string, bdstoken, user_info)
 
         # 更新最后访问时间
         supabase.table('user_sessions').update({
@@ -117,6 +150,10 @@ def login():
         cookie_string = data.get('cookie', '')
         if hasattr(provider, 'login_with_cookie'):
             result = provider.login_with_cookie(cookie_string)
+    elif login_method == 'refresh_token':
+        token = data.get('refresh_token', '')
+        if hasattr(provider, 'login_with_refresh_token'):
+            result = provider.login_with_refresh_token(token)
     elif login_method == 'password':
         username = data.get('username', '')
         password = data.get('password', '')
@@ -139,11 +176,20 @@ def login():
                 'session_id': sid,
                 'provider_type': provider_type,
                 'cookie_string': cookie_string,
-                'bdstoken': provider.bdstoken or '',
                 'user_info': result.get('user_info', {}),
                 'created_at': datetime.now().isoformat(),
-                'last_accessed': datetime.now().isoformat()
+                'last_accessed': datetime.now().isoformat(),
             }
+
+            if provider_type == 'aliyun':
+                session_data['refresh_token'] = result.get('refresh_token', '')
+                session_data['access_token'] = result.get('access_token', '')
+                session_data['drive_id'] = result.get('drive_id', '')
+                session_data['token_expires_at'] = result.get('token_expires_at')
+                session_data['bdstoken'] = ''
+            else:
+                session_data['bdstoken'] = getattr(provider, 'bdstoken', '') or ''
+
             supabase.table('user_sessions').upsert(
                 session_data,
                 on_conflict='session_id'
@@ -188,6 +234,7 @@ def dashboard():
 
     return render_template('index.html',
                            provider_name=provider_name,
+                           provider_type=provider_type,
                            user_info=user_info,
                            cache_info=cache_info)
 
@@ -589,6 +636,64 @@ def generate_report():
     response.headers['Content-Type'] = 'text/html; charset=utf-8'
     response.headers['Content-Disposition'] = f'attachment; filename="{report_filename}"'
     return response
+
+
+@app.route('/api/aliyun/qr/generate')
+def aliyun_qr_generate():
+    """生成阿里云盘扫码登录二维码"""
+    provider = AliyunProvider()
+    result = provider.generate_qr_code()
+    return jsonify(result)
+
+
+@app.route('/api/aliyun/qr/check', methods=['POST'])
+def aliyun_qr_check():
+    """检查阿里云盘扫码状态"""
+    data = request.get_json()
+    ck = data.get('ck', '')
+    t = data.get('t', '')
+
+    if not ck or not t:
+        return jsonify({'success': False, 'status': 'ERROR', 'message': '参数缺失'})
+
+    provider = AliyunProvider()
+    qr_result = provider.check_qr_status(ck, t)
+
+    # 如果扫码确认，自动完成登录
+    if qr_result.get('status') == 'CONFIRMED' and qr_result.get('refresh_token'):
+        login_result = provider.login_with_refresh_token(qr_result['refresh_token'])
+
+        if login_result.get('success'):
+            sid = get_session_id()
+            session['logged_in'] = True
+            session['provider_type'] = 'aliyun'
+            session['user_info'] = login_result.get('user_info', {})
+
+            try:
+                supabase = get_supabase()
+                session_data = {
+                    'session_id': sid,
+                    'provider_type': 'aliyun',
+                    'cookie_string': '',
+                    'bdstoken': '',
+                    'refresh_token': login_result.get('refresh_token', ''),
+                    'access_token': login_result.get('access_token', ''),
+                    'drive_id': login_result.get('drive_id', ''),
+                    'token_expires_at': login_result.get('token_expires_at'),
+                    'user_info': login_result.get('user_info', {}),
+                    'created_at': datetime.now().isoformat(),
+                    'last_accessed': datetime.now().isoformat(),
+                }
+                supabase.table('user_sessions').upsert(
+                    session_data, on_conflict='session_id'
+                ).execute()
+            except Exception as e:
+                print(f'保存阿里云盘会话失败: {str(e)}')
+
+            qr_result['logged_in'] = True
+            qr_result['user_info'] = login_result.get('user_info', {})
+
+    return jsonify(qr_result)
 
 
 @app.route('/results')

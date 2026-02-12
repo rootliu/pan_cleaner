@@ -248,9 +248,10 @@ function renderDuplicateFiles(data) {
                             <input type="checkbox"
                                 class="dup-file-checkbox"
                                 data-path="${file.path}"
+                                data-name="${file.name || file.path}"
                                 data-group="${group.hash}"
                                 ${i === 0 ? '' : 'checked'}>
-                            <span class="file-path">${file.path}</span>
+                            <span class="file-path" title="${file.path}">${file.name || file.path}</span>
                             <span class="file-size">${formatSize(file.size)}</span>
                         </div>
                     `).join('')}
@@ -314,9 +315,10 @@ function renderDuplicateFolders(data) {
                             <input type="checkbox"
                                 class="dup-folder-checkbox"
                                 data-path="${folder.path}"
+                                data-name="${folder.name || folder.path}"
                                 data-group="${group.content_hash}"
                                 ${i === 0 ? '' : 'checked'}>
-                            <span class="file-path">${folder.path}</span>
+                            <span class="file-path" title="${folder.path}">${folder.name || folder.path}</span>
                         </div>
                     `).join('')}
                 </div>
@@ -410,10 +412,10 @@ function renderLargeFilesTable(files, category) {
             <tbody>
                 ${filteredFiles.map(file => `
                     <tr>
-                        <td><input type="checkbox" class="large-file-checkbox" data-path="${file.path}"></td>
+                        <td><input type="checkbox" class="large-file-checkbox" data-path="${file.path}" data-name="${file.name || file.path}"></td>
                         <td>${file.name}</td>
                         <td>${categoryNames[file.category] || file.category}</td>
-                        <td class="file-path">${file.path}</td>
+                        <td class="file-path" title="${file.path}">${file.name || file.path}</td>
                         <td>${file.size_formatted}</td>
                     </tr>
                 `).join('')}
@@ -496,10 +498,10 @@ function renderExecutables(data) {
             <tbody>
                 ${data.map(file => `
                     <tr>
-                        <td><input type="checkbox" class="exec-file-checkbox" data-path="${file.path}"></td>
+                        <td><input type="checkbox" class="exec-file-checkbox" data-path="${file.path}" data-name="${file.name || file.path}"></td>
                         <td>${file.name}</td>
                         <td>.${file.extension}</td>
-                        <td class="file-path">${file.path}</td>
+                        <td class="file-path" title="${file.path}">${file.name || file.path}</td>
                         <td>${file.size_formatted}</td>
                     </tr>
                 `).join('')}
@@ -609,7 +611,7 @@ function initExportButton() {
 function copyPathsToClipboard(paths) {
     const text = paths.join('\n');
     navigator.clipboard.writeText(text).then(() => {
-        alert(`已复制 ${paths.length} 个路径到剪贴板！\n\n您可以在百度网盘网页端搜索这些路径并手动删除。`);
+        alert(`已复制 ${paths.length} 个路径到剪贴板！`);
     }).catch(err => {
         // 降级方案：创建临时文本框
         const textarea = document.createElement('textarea');
@@ -618,7 +620,7 @@ function copyPathsToClipboard(paths) {
         textarea.select();
         document.execCommand('copy');
         document.body.removeChild(textarea);
-        alert(`已复制 ${paths.length} 个路径到剪贴板！\n\n您可以在百度网盘网页端搜索这些路径并手动删除。`);
+        alert(`已复制 ${paths.length} 个路径到剪贴板！`);
     });
 }
 

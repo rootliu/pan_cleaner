@@ -31,7 +31,6 @@
                             <span class="provider-card">
                                 <span class="provider-icon">&#x2601;</span>
                                 <span class="provider-name">阿里云盘</span>
-                                <span class="coming-soon">即将支持</span>
                             </span>
                         </label>
                         <label class="provider-option">
@@ -45,61 +44,100 @@
                     </div>
                 </div>
 
-                <!-- 登录方式选项卡 -->
-                <div class="form-group">
-                    <label>登录方式</label>
-                    <div class="login-tabs">
-                        <button type="button" class="tab-btn active" data-tab="cookie">Cookie登录</button>
-                        <button type="button" class="tab-btn" data-tab="password">密码登录</button>
-                        <button type="button" class="tab-btn" data-tab="sms">验证码登录</button>
-                    </div>
-                </div>
-
-                <!-- Cookie 登录 -->
-                <div id="cookie-form" class="tab-content active">
+                <!-- 百度网盘登录方式 -->
+                <div id="baidu-login-section" class="provider-login-section">
                     <div class="form-group">
-                        <label for="cookie">Cookie</label>
-                        <textarea id="cookie" name="cookie" rows="4"
-                            placeholder="请从浏览器获取登录后的Cookie粘贴到这里..."></textarea>
-                        <div class="form-hint">
-                            <p>获取方法：</p>
-                            <ol>
-                                <li>在浏览器中登录百度网盘</li>
-                                <li>按 F12 打开开发者工具</li>
-                                <li>切换到 Network 标签页</li>
-                                <li>刷新页面，点击任意请求</li>
-                                <li>在 Headers 中找到 Cookie 并复制</li>
-                            </ol>
+                        <label>登录方式</label>
+                        <div class="login-tabs">
+                            <button type="button" class="tab-btn active" data-tab="cookie">Cookie登录</button>
+                            <button type="button" class="tab-btn" data-tab="password">密码登录</button>
+                            <button type="button" class="tab-btn" data-tab="sms">验证码登录</button>
+                        </div>
+                    </div>
+
+                    <div id="cookie-form" class="tab-content active">
+                        <div class="form-group">
+                            <label for="cookie">Cookie</label>
+                            <textarea id="cookie" name="cookie" rows="4"
+                                placeholder="请从浏览器获取登录后的Cookie粘贴到这里..."></textarea>
+                            <div class="form-hint">
+                                <p>获取方法：</p>
+                                <ol>
+                                    <li>在浏览器中登录百度网盘</li>
+                                    <li>按 F12 打开开发者工具</li>
+                                    <li>切换到 Network 标签页</li>
+                                    <li>刷新页面，点击任意请求</li>
+                                    <li>在 Headers 中找到 Cookie 并复制</li>
+                                </ol>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="password-form" class="tab-content">
+                        <div class="form-group">
+                            <label for="username">用户名</label>
+                            <input type="text" id="username" name="username" placeholder="请输入用户名">
+                        </div>
+                        <div class="form-group">
+                            <label for="password">密码</label>
+                            <input type="password" id="password" name="password" placeholder="请输入密码">
+                        </div>
+                        <div class="form-hint warning">
+                            注意：密码登录可能需要验证码，推荐使用Cookie方式
+                        </div>
+                    </div>
+
+                    <div id="sms-form" class="tab-content">
+                        <div class="form-group">
+                            <label for="phone">手机号</label>
+                            <input type="tel" id="phone" name="phone" placeholder="请输入手机号">
+                        </div>
+                        <div class="form-group">
+                            <label for="sms_code">验证码</label>
+                            <div class="input-with-btn">
+                                <input type="text" id="sms_code" name="sms_code" placeholder="请输入验证码">
+                                <button type="button" id="sendSmsBtn" class="btn-secondary">发送验证码</button>
+                            </div>
                         </div>
                     </div>
                 </div>
 
-                <!-- 密码登录 -->
-                <div id="password-form" class="tab-content">
+                <!-- 阿里云盘登录方式 -->
+                <div id="aliyun-login-section" class="provider-login-section" style="display: none;">
                     <div class="form-group">
-                        <label for="username">用户名</label>
-                        <input type="text" id="username" name="username" placeholder="请输入用户名">
+                        <label>登录方式</label>
+                        <div class="login-tabs" id="aliyun-tabs">
+                            <button type="button" class="tab-btn active" data-tab="aliyun-token">Token登录</button>
+                            <button type="button" class="tab-btn" data-tab="aliyun-qr">扫码登录</button>
+                        </div>
                     </div>
-                    <div class="form-group">
-                        <label for="password">密码</label>
-                        <input type="password" id="password" name="password" placeholder="请输入密码">
-                    </div>
-                    <div class="form-hint warning">
-                        注意：密码登录可能需要验证码，推荐使用Cookie方式
-                    </div>
-                </div>
 
-                <!-- 验证码登录 -->
-                <div id="sms-form" class="tab-content">
-                    <div class="form-group">
-                        <label for="phone">手机号</label>
-                        <input type="tel" id="phone" name="phone" placeholder="请输入手机号">
+                    <div id="aliyun-token-form" class="tab-content active">
+                        <div class="form-group">
+                            <label for="aliyun_refresh_token">Refresh Token</label>
+                            <textarea id="aliyun_refresh_token" name="aliyun_refresh_token" rows="3"
+                                placeholder="请粘贴阿里云盘的 Refresh Token..."></textarea>
+                            <div class="form-hint">
+                                <p>获取方法：</p>
+                                <ol>
+                                    <li>在浏览器中登录 <a href="https://www.alipan.com" target="_blank">阿里云盘网页版</a></li>
+                                    <li>按 F12 打开开发者工具</li>
+                                    <li>切换到 Application 标签页</li>
+                                    <li>在左侧 Local Storage &rarr; https://www.alipan.com 中找到 <code>token</code> 键</li>
+                                    <li>复制其中的 <code>refresh_token</code> 值</li>
+                                </ol>
+                            </div>
+                        </div>
                     </div>
-                    <div class="form-group">
-                        <label for="sms_code">验证码</label>
-                        <div class="input-with-btn">
-                            <input type="text" id="sms_code" name="sms_code" placeholder="请输入验证码">
-                            <button type="button" id="sendSmsBtn" class="btn-secondary">发送验证码</button>
+
+                    <div id="aliyun-qr-form" class="tab-content">
+                        <div class="qr-login-container">
+                            <div id="qrCodeBox" class="qr-code-box">
+                                <div class="qr-placeholder">点击下方按钮生成二维码</div>
+                                <img id="qrCodeImg" class="qr-code-img" style="display: none;" alt="扫码登录">
+                            </div>
+                            <div id="qrStatus" class="qr-status">请使用阿里云盘 APP 扫码</div>
+                            <button type="button" id="generateQrBtn" class="btn-secondary">生成二维码</button>
                         </div>
                     </div>
                 </div>
@@ -114,12 +152,24 @@
                 <div id="loginMessage" class="message" style="display: none;"></div>
             </form>
 
-            <div class="usage-tips">
+            <!-- 百度网盘使用说明 -->
+            <div id="baidu-tips" class="usage-tips">
                 <h3>使用说明</h3>
                 <ul>
                     <li><strong>Cookie获取：</strong>在浏览器登录百度网盘后，按F12打开开发者工具，在Network标签页中复制任意请求的Cookie。Cookie必须包含 <code>BDUSS</code> 和 <code>STOKEN</code> 字段。</li>
                     <li><strong>删除验证：</strong>首次使用删除功能时，百度可能要求人机验证。如遇到删除失败（错误码132），请先在浏览器中打开 <a href="https://pan.baidu.com" target="_blank">pan.baidu.com</a>，手动删除任意一个文件，完成弹出的验证框后，回到本工具即可正常删除。</li>
                     <li><strong>扫描缓存：</strong>扫描结果会自动缓存，下次登录可直接加载，无需重复扫描。如需更新数据，请使用"强制重新扫描"。</li>
+                </ul>
+            </div>
+
+            <!-- 阿里云盘使用说明 -->
+            <div id="aliyun-tips" class="usage-tips" style="display: none;">
+                <h3>使用说明</h3>
+                <ul>
+                    <li><strong>Token 获取：</strong>登录 <a href="https://www.alipan.com" target="_blank">www.alipan.com</a> 后，按 F12 打开开发者工具，在 Application &rarr; Local Storage 中找到 token 键，复制 refresh_token 的值。</li>
+                    <li><strong>扫码登录：</strong>也可以直接使用阿里云盘手机 APP 扫码登录，无需手动获取 Token。</li>
+                    <li><strong>文件删除：</strong>阿里云盘删除的文件会移入回收站，30 天后自动清理。</li>
+                    <li><strong>扫描缓存：</strong>扫描结果会自动缓存，下次登录可直接加载，无需重复扫描。</li>
                 </ul>
             </div>
         </div>
@@ -129,23 +179,72 @@
     <script>
         // 登录页面特定逻辑
         document.addEventListener('DOMContentLoaded', function() {
-            // 标签页切换
-            const tabBtns = document.querySelectorAll('.tab-btn');
-            const tabContents = document.querySelectorAll('.tab-content');
+            let currentProvider = 'baidu';
+            let qrPollingTimer = null;
+            let qrCk = '';
+            let qrT = '';
 
-            tabBtns.forEach(btn => {
+            // ─── Provider 切换 ────────────────────────────────
+            const providerRadios = document.querySelectorAll('input[name="provider_type"]');
+            providerRadios.forEach(radio => {
+                radio.addEventListener('change', function() {
+                    currentProvider = this.value;
+                    switchProviderUI(currentProvider);
+                });
+            });
+
+            function switchProviderUI(provider) {
+                // 停止 QR 轮询
+                stopQrPolling();
+
+                // 切换登录区域
+                document.getElementById('baidu-login-section').style.display = provider === 'baidu' ? '' : 'none';
+                document.getElementById('aliyun-login-section').style.display = provider === 'aliyun' ? '' : 'none';
+
+                // 切换使用说明
+                document.getElementById('baidu-tips').style.display = provider === 'baidu' ? '' : 'none';
+                document.getElementById('aliyun-tips').style.display = provider === 'aliyun' ? '' : 'none';
+
+                // 重置阿里云盘 tab 到 token
+                if (provider === 'aliyun') {
+                    const aliyunTabs = document.querySelectorAll('#aliyun-tabs .tab-btn');
+                    const aliyunContents = document.querySelectorAll('#aliyun-login-section .tab-content');
+                    aliyunTabs.forEach(b => b.classList.remove('active'));
+                    aliyunContents.forEach(c => c.classList.remove('active'));
+                    aliyunTabs[0].classList.add('active');
+                    document.getElementById('aliyun-token-form').classList.add('active');
+                }
+            }
+
+            // ─── 百度 Tab 切换 ────────────────────────────────
+            const baiduTabs = document.querySelectorAll('#baidu-login-section .tab-btn');
+            const baiduContents = document.querySelectorAll('#baidu-login-section .tab-content');
+
+            baiduTabs.forEach(btn => {
                 btn.addEventListener('click', function() {
                     const tab = this.dataset.tab;
-
-                    tabBtns.forEach(b => b.classList.remove('active'));
-                    tabContents.forEach(c => c.classList.remove('active'));
-
+                    baiduTabs.forEach(b => b.classList.remove('active'));
+                    baiduContents.forEach(c => c.classList.remove('active'));
                     this.classList.add('active');
                     document.getElementById(tab + '-form').classList.add('active');
                 });
             });
 
-            // 表单提交
+            // ─── 阿里云盘 Tab 切换 ───────────────────────────
+            const aliyunTabs = document.querySelectorAll('#aliyun-tabs .tab-btn');
+            const aliyunContents = document.querySelectorAll('#aliyun-login-section .tab-content');
+
+            aliyunTabs.forEach(btn => {
+                btn.addEventListener('click', function() {
+                    const tab = this.dataset.tab;
+                    aliyunTabs.forEach(b => b.classList.remove('active'));
+                    aliyunContents.forEach(c => c.classList.remove('active'));
+                    this.classList.add('active');
+                    document.getElementById(tab + '-form').classList.add('active');
+                });
+            });
+
+            // ─── 表单提交 ─────────────────────────────────────
             document.getElementById('loginForm').addEventListener('submit', async function(e) {
                 e.preventDefault();
 
@@ -154,26 +253,38 @@
                 const btnText = btn.querySelector('.btn-text');
                 const btnLoading = btn.querySelector('.btn-loading');
 
-                // 获取当前登录方式
-                const activeTab = document.querySelector('.tab-btn.active').dataset.tab;
                 const providerType = document.querySelector('input[name="provider_type"]:checked').value;
 
-                let data = {
-                    provider_type: providerType,
-                    login_method: activeTab
-                };
+                let data = { provider_type: providerType };
 
-                if (activeTab === 'cookie') {
-                    data.cookie = document.getElementById('cookie').value;
-                } else if (activeTab === 'password') {
-                    data.username = document.getElementById('username').value;
-                    data.password = document.getElementById('password').value;
-                } else if (activeTab === 'sms') {
-                    data.phone = document.getElementById('phone').value;
-                    data.sms_code = document.getElementById('sms_code').value;
+                if (providerType === 'baidu') {
+                    const activeTab = document.querySelector('#baidu-login-section .tab-btn.active').dataset.tab;
+                    data.login_method = activeTab;
+
+                    if (activeTab === 'cookie') {
+                        data.cookie = document.getElementById('cookie').value;
+                    } else if (activeTab === 'password') {
+                        data.username = document.getElementById('username').value;
+                        data.password = document.getElementById('password').value;
+                    } else if (activeTab === 'sms') {
+                        data.phone = document.getElementById('phone').value;
+                        data.sms_code = document.getElementById('sms_code').value;
+                    }
+                } else if (providerType === 'aliyun') {
+                    const activeTab = document.querySelector('#aliyun-tabs .tab-btn.active').dataset.tab;
+
+                    if (activeTab === 'aliyun-qr') {
+                        // 扫码登录由 QR 轮询自动完成，不走表单提交
+                        message.style.display = 'block';
+                        message.className = 'message error';
+                        message.textContent = '请先生成二维码并扫码登录';
+                        return;
+                    }
+
+                    data.login_method = 'refresh_token';
+                    data.refresh_token = document.getElementById('aliyun_refresh_token').value;
                 }
 
-                // 显示加载状态
                 btn.disabled = true;
                 btnText.style.display = 'none';
                 btnLoading.style.display = 'inline';
@@ -181,9 +292,7 @@
                 try {
                     const response = await fetch('/login', {
                         method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
+                        headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify(data)
                     });
 
@@ -193,9 +302,7 @@
                     if (result.success) {
                         message.className = 'message success';
                         message.textContent = '登录成功，正在跳转...';
-                        setTimeout(() => {
-                            window.location.href = '/dashboard';
-                        }, 1000);
+                        setTimeout(() => { window.location.href = '/dashboard'; }, 1000);
                     } else {
                         message.className = 'message error';
                         message.textContent = result.message || '登录失败';
@@ -211,7 +318,101 @@
                 }
             });
 
-            // 发送验证码
+            // ─── 阿里云盘扫码登录 ────────────────────────────
+            document.getElementById('generateQrBtn').addEventListener('click', async function() {
+                this.disabled = true;
+                this.textContent = '生成中...';
+                stopQrPolling();
+
+                const qrImg = document.getElementById('qrCodeImg');
+                const qrPlaceholder = document.querySelector('.qr-placeholder');
+                const qrStatus = document.getElementById('qrStatus');
+
+                try {
+                    const response = await fetch('/api/aliyun/qr/generate');
+                    const result = await response.json();
+
+                    if (result.success) {
+                        qrCk = result.ck;
+                        qrT = result.t;
+
+                        // 使用 QR URL 生成二维码图片（通过第三方 API）
+                        const qrApiUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=' + encodeURIComponent(result.qr_url);
+                        qrImg.src = qrApiUrl;
+                        qrImg.style.display = 'block';
+                        if (qrPlaceholder) qrPlaceholder.style.display = 'none';
+
+                        qrStatus.textContent = '请使用阿里云盘 APP 扫描二维码';
+                        qrStatus.className = 'qr-status';
+
+                        // 开始轮询
+                        startQrPolling();
+                    } else {
+                        qrStatus.textContent = result.message || '生成二维码失败';
+                        qrStatus.className = 'qr-status error';
+                    }
+                } catch (error) {
+                    qrStatus.textContent = '网络错误，请重试';
+                    qrStatus.className = 'qr-status error';
+                } finally {
+                    this.disabled = false;
+                    this.textContent = '生成二维码';
+                }
+            });
+
+            function startQrPolling() {
+                qrPollingTimer = setInterval(checkQrStatus, 3000);
+            }
+
+            function stopQrPolling() {
+                if (qrPollingTimer) {
+                    clearInterval(qrPollingTimer);
+                    qrPollingTimer = null;
+                }
+            }
+
+            async function checkQrStatus() {
+                if (!qrCk || !qrT) return;
+
+                const qrStatus = document.getElementById('qrStatus');
+                const message = document.getElementById('loginMessage');
+
+                try {
+                    const response = await fetch('/api/aliyun/qr/check', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ ck: qrCk, t: qrT })
+                    });
+
+                    const result = await response.json();
+
+                    if (result.status === 'NEW') {
+                        qrStatus.textContent = '请使用阿里云盘 APP 扫描二维码';
+                        qrStatus.className = 'qr-status';
+                    } else if (result.status === 'SCANED') {
+                        qrStatus.textContent = '已扫码，请在手机上确认登录';
+                        qrStatus.className = 'qr-status scaned';
+                    } else if (result.status === 'CONFIRMED') {
+                        stopQrPolling();
+                        if (result.logged_in) {
+                            qrStatus.textContent = '登录成功，正在跳转...';
+                            qrStatus.className = 'qr-status success';
+                            setTimeout(() => { window.location.href = '/dashboard'; }, 1000);
+                        } else {
+                            qrStatus.textContent = result.message || '扫码确认但登录失败';
+                            qrStatus.className = 'qr-status error';
+                        }
+                    } else if (result.status === 'EXPIRED') {
+                        stopQrPolling();
+                        qrStatus.textContent = '二维码已过期，请重新生成';
+                        qrStatus.className = 'qr-status error';
+                    }
+                } catch (error) {
+                    // 网络错误不停止轮询，静默重试
+                }
+            }
+
+            // ─── 发送验证码（百度） ──────────────────────────
             document.getElementById('sendSmsBtn').addEventListener('click', async function() {
                 const phone = document.getElementById('phone').value;
                 if (!phone) {
@@ -222,7 +423,6 @@
                 this.disabled = true;
                 this.textContent = '发送中...';
 
-                // TODO: 实现发送验证码逻辑
                 setTimeout(() => {
                     this.textContent = '60s后重试';
                     let countdown = 60;

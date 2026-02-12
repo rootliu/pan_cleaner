@@ -85,8 +85,10 @@ class BaiduProvider(BaseProvider):
 
             # 验证登录状态
             response = self.session.get(f'{self.API_BASE}/api/quota')
+            print(f'[DEBUG] quota API 状态码: {response.status_code}')
             if response.status_code == 200:
                 data = response.json()
+                print(f'[DEBUG] quota API 响应: errno={data.get("errno")}, errmsg={data.get("errmsg", "")}')
                 if data.get('errno') == 0:
                     self.is_logged_in = True
 
@@ -116,10 +118,16 @@ class BaiduProvider(BaseProvider):
                         'cookie_warning': bool(missing_required),
                         'missing_cookies': missing_required
                     }
+                else:
+                    return {
+                        'success': False,
+                        'message': f'Cookie无效或已过期（errno={data.get("errno")}, {data.get("errmsg", "")}）',
+                        'user_info': None
+                    }
 
             return {
                 'success': False,
-                'message': 'Cookie无效或已过期',
+                'message': f'Cookie验证请求失败（HTTP {response.status_code}）',
                 'user_info': None
             }
         except Exception as e:
