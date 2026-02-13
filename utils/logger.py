@@ -2,9 +2,12 @@
 操作日志记录模块 - Supabase 后端
 """
 
+import logging
 from datetime import datetime
 from typing import List, Dict, Any
 from .supabase_client import get_supabase
+
+log = logging.getLogger(__name__)
 
 
 def log_delete_operation(provider_name: str, username: str, paths: List[str],
@@ -34,7 +37,7 @@ def log_delete_operation(provider_name: str, username: str, paths: List[str],
         }
         supabase.table('delete_logs').insert(data).execute()
     except Exception as e:
-        print(f'写入日志失败: {str(e)}')
+        log.error(f'写入日志失败: {str(e)}')
 
 
 def get_operation_logs(provider_name: str, username: str,
@@ -60,5 +63,5 @@ def get_operation_logs(provider_name: str, username: str,
 
         return result.data if result.data else []
     except Exception as e:
-        print(f'读取日志失败: {str(e)}')
+        log.error(f'读取日志失败: {str(e)}')
         return []

@@ -2,12 +2,15 @@
 百度网盘提供者实现
 """
 
+import logging
 import requests
 import time
 import hashlib
 from typing import List, Optional
 from datetime import datetime
 from ..base_provider import BaseProvider, FileInfo, FolderInfo
+
+logger = logging.getLogger(__name__)
 
 
 class BaiduProvider(BaseProvider):
@@ -75,9 +78,9 @@ class BaiduProvider(BaseProvider):
             missing_recommended = [k for k in self.RECOMMENDED_COOKIES if k not in cookies]
 
             if missing_required:
-                print(f'[WARNING] Cookie缺少删除操作必需字段: {missing_required}')
+                logger.warning(f'Cookie缺少删除操作必需字段: {missing_required}')
             if missing_recommended:
-                print(f'[INFO] Cookie缺少建议字段: {missing_recommended}')
+                logger.info(f'Cookie缺少建议字段: {missing_recommended}')
 
             # 设置cookie
             for key, value in cookies.items():
@@ -85,10 +88,10 @@ class BaiduProvider(BaseProvider):
 
             # 验证登录状态
             response = self.session.get(f'{self.API_BASE}/api/quota')
-            print(f'[DEBUG] quota API 状态码: {response.status_code}')
+            logger.debug(f'quota API 状态码: {response.status_code}')
             if response.status_code == 200:
                 data = response.json()
-                print(f'[DEBUG] quota API 响应: errno={data.get("errno")}, errmsg={data.get("errmsg", "")}')
+                logger.debug(f'quota API 响应: errno={data.get("errno")}, errmsg={data.get("errmsg", "")}')
                 if data.get('errno') == 0:
                     self.is_logged_in = True
 
@@ -147,15 +150,15 @@ class BaiduProvider(BaseProvider):
                 response = self.session.get(f'{self.API_BASE}/api/gettemplatevariable?fields=[%22bdstoken%22]')
                 if response.status_code == 200:
                     data = response.json()
-                    print(f'[DEBUG] gettemplatevariable响应: {data}')
+                    logger.debug(f'gettemplatevariable响应: {data}')
                     if data.get('errno') == 0 and data.get('result'):
                         token = data['result'].get('bdstoken', '')
                         if token:
                             self.bdstoken = token
-                            print(f'[DEBUG] 从API获取bdstoken成功: {self.bdstoken[:8]}...')
+                            logger.debug(f'从API获取bdstoken成功: {self.bdstoken[:8]}...')
                             return
             except Exception as e:
-                print(f'[DEBUG] API获取bdstoken失败: {e}')
+                logger.debug(f'API获取bdstoken失败: {e}')
 
             # 方法2: 从主页获取
             response = self.session.get(f'{self.API_BASE}/disk/home')
@@ -173,10 +176,10 @@ class BaiduProvider(BaseProvider):
                     match = re.search(pattern, response.text)
                     if match:
                         self.bdstoken = match.group(1)
-                        print(f'[DEBUG] 从页面获取bdstoken成功(pattern={pattern[:20]}...): {self.bdstoken[:8]}...')
+                        logger.debug(f'从页面获取bdstoken成功(pattern={pattern[:20]}...): {self.bdstoken[:8]}...')
                         return
 
-                print(f'[DEBUG] 页面中未找到bdstoken，页面长度: {len(response.text)}')
+                logger.debug(f'页面中未找到bdstoken，页面长度: {len(response.text)}')
 
             # 方法3: 从disk/main页面获取
             try:
@@ -185,15 +188,15 @@ class BaiduProvider(BaseProvider):
                     match = re.search(r'"bdstoken"\s*:\s*"([a-f0-9]{32})"', response.text)
                     if match:
                         self.bdstoken = match.group(1)
-                        print(f'[DEBUG] 从main页面获取bdstoken成功: {self.bdstoken[:8]}...')
+                        logger.debug(f'从main页面获取bdstoken成功: {self.bdstoken[:8]}...')
                         return
             except Exception as e:
-                print(f'[DEBUG] main页面获取bdstoken失败: {e}')
+                logger.debug(f'main页面获取bdstoken失败: {e}')
 
-            print(f'[WARNING] 所有方法都未能获取bdstoken')
+            logger.warning(f'所有方法都未能获取bdstoken')
 
         except Exception as e:
-            print(f'获取bdstoken失败: {str(e)}')
+            logger.error(f'获取bdstoken失败: {str(e)}')
 
     def restore_session(self, cookie_string: str, bdstoken: str = None, user_info: dict = None):
         """
@@ -284,7 +287,7 @@ class BaiduProvider(BaseProvider):
             return files
 
         except Exception as e:
-            print(f'列出文件失败: {str(e)}')
+            logger.error(f'列出文件失败: {str(e)}')
             return []
 
     def list_all_files(self, path: str = '/', recursive: bool = True) -> List[FileInfo]:
@@ -335,7 +338,7 @@ class BaiduProvider(BaseProvider):
             )
 
         except Exception as e:
-            print(f'获取文件信息失败: {str(e)}')
+            logger.error(f'获取文件信息失败: {str(e)}')
             return None
 
     def delete_files(self, paths: List[str]) -> dict:
@@ -392,8 +395,8 @@ class BaiduProvider(BaseProvider):
             if not self.bdstoken:
                 self._get_bdstoken()
 
-            print(f'[DEBUG] 删除文件: {paths}')
-            print(f'[DEBUG] bdstoken: {self.bdstoken[:8] if self.bdstoken else "None"}...')
+            logger.debug(f'删除文件: {paths}')
+            logger.debug(f'bdstoken: {self.bdstoken[:8] if self.bdstoken else "None"}...')
 
             # 收集所有方法的错误信息
             errors = []
@@ -404,7 +407,7 @@ class BaiduProvider(BaseProvider):
                 return result
             errors.append(f"方法1(errno={result.get('errno', '?')})")
 
-            print(f'[DEBUG] 方法1失败，尝试方法2')
+            logger.debug(f'方法1失败，尝试方法2')
 
             # 尝试方法2: 不同的API端点
             result = self._try_delete_method2(paths)
@@ -412,7 +415,7 @@ class BaiduProvider(BaseProvider):
                 return result
             errors.append(f"方法2(errno={result.get('errno', '?')})")
 
-            print(f'[DEBUG] 方法2失败，尝试方法3')
+            logger.debug(f'方法2失败，尝试方法3')
 
             # 尝试方法3: xpan接口
             result = self._try_delete_method3(paths)
@@ -425,9 +428,7 @@ class BaiduProvider(BaseProvider):
             return result
 
         except Exception as e:
-            import traceback
-            print(f'[ERROR] 删除异常: {str(e)}')
-            print(traceback.format_exc())
+            logger.exception(f'删除异常: {str(e)}')
             return {
                 'success': False,
                 'message': f'删除失败: {str(e)}',
@@ -530,7 +531,7 @@ class BaiduProvider(BaseProvider):
     def _parse_delete_response(self, response, paths: List[str], method_name: str) -> dict:
         """解析删除API响应"""
         if response.status_code != 200:
-            print(f'[DEBUG] {method_name} HTTP错误: {response.status_code}')
+            logger.debug(f'{method_name} HTTP错误: {response.status_code}')
             return {
                 'success': False,
                 'message': f'请求失败: HTTP {response.status_code}',
@@ -540,8 +541,8 @@ class BaiduProvider(BaseProvider):
 
         try:
             result = response.json()
-        except:
-            print(f'[DEBUG] {method_name} 响应不是JSON: {response.text[:200]}')
+        except (ValueError, Exception):
+            logger.debug(f'{method_name} 响应不是JSON: {response.text[:200]}')
             return {
                 'success': False,
                 'message': '响应格式错误',
@@ -577,7 +578,7 @@ class BaiduProvider(BaseProvider):
             9019: '需要验证身份',
         }
 
-        print(f'[DEBUG] {method_name} 响应: errno={errno}, result={result}')
+        logger.debug(f'{method_name} 响应: errno={errno}, result={result}')
 
         if errno == 0:
             return {
@@ -621,5 +622,5 @@ class BaiduProvider(BaseProvider):
             return {'total': 0, 'used': 0, 'free': 0}
 
         except Exception as e:
-            print(f'获取容量信息失败: {str(e)}')
+            logger.error(f'获取容量信息失败: {str(e)}')
             return {'total': 0, 'used': 0, 'free': 0}

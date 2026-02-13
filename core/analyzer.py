@@ -138,15 +138,3 @@ class FileAnalyzer:
                 'size': sum(f.size for f in executables)
             }
         }
-
-
-def format_size(size_bytes: int) -> str:
-    """格式化文件大小显示"""
-    if size_bytes < 1024:
-        return f"{size_bytes} B"
-    elif size_bytes < 1024 * 1024:
-        return f"{size_bytes / 1024:.2f} KB"
-    elif size_bytes < 1024 * 1024 * 1024:
-        return f"{size_bytes / (1024 * 1024):.2f} MB"
-    else:
-        return f"{size_bytes / (1024 * 1024 * 1024):.2f} GB"

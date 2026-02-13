@@ -2,10 +2,13 @@
 重复文件和文件夹检测模块
 """
 
+import logging
 from typing import List, Dict, Tuple
 from collections import defaultdict
 import hashlib
 from .base_provider import FileInfo, FolderInfo
+
+logger = logging.getLogger(__name__)
 
 
 class DuplicateFinder:
@@ -15,6 +18,8 @@ class DuplicateFinder:
         self.files = files
         self.folders = [f for f in files if f.is_dir]
         self.regular_files = [f for f in files if not f.is_dir]
+        self._cached_dup_files = None
+        self._cached_dup_folders = None
 
     def find_duplicate_files(self) -> List[Dict]:
         """
@@ -30,6 +35,9 @@ class DuplicateFinder:
             ...
         ]
         """
+        if self._cached_dup_files is not None:
+            return self._cached_dup_files
+
         # 第一步：按文件大小分组（相同大小才可能重复）
         size_groups = defaultdict(list)
         for file in self.regular_files:
@@ -43,12 +51,13 @@ class DuplicateFinder:
             if len(files) < 2:
                 continue
 
-            # 按MD5分组
+            # 按MD5分组（跳过没有MD5的文件，无法可靠判断是否重复）
             hash_groups = defaultdict(list)
             for file in files:
-                # 使用网盘提供的MD5，如果没有则使用路径作为唯一标识
-                file_hash = file.md5 if file.md5 else self._generate_path_hash(file.path)
-                hash_groups[file_hash].append(file)
+                if file.md5:
+                    hash_groups[file.md5].append(file)
+                else:
+                    logger.debug(f'跳过无MD5文件: {file.path}')
 
             # 找出重复的组
             for file_hash, group_files in hash_groups.items():
@@ -64,6 +73,7 @@ class DuplicateFinder:
         # 按浪费空间排序（从大到小）
         duplicates.sort(key=lambda x: x['wasted_space'], reverse=True)
 
+        self._cached_dup_files = duplicates
         return duplicates
 
     def find_duplicate_folders(self) -> List[Dict]:
@@ -80,6 +90,9 @@ class DuplicateFinder:
             ...
         ]
         """
+        if self._cached_dup_folders is not None:
+            return self._cached_dup_folders
+
         # 计算每个文件夹的内容签名
         folder_signatures = {}
 
@@ -116,6 +129,7 @@ class DuplicateFinder:
         # 按浪费空间排序
         duplicates.sort(key=lambda x: x['wasted_space'], reverse=True)
 
+        self._cached_dup_folders = duplicates
         return duplicates
 
     def _calculate_folder_signature(self, folder_path: str) -> str:
@@ -144,12 +158,8 @@ class DuplicateFinder:
                 total_size += file.size
         return total_size
 
-    def _generate_path_hash(self, path: str) -> str:
-        """根据路径生成哈希（当没有MD5时使用）"""
-        return hashlib.md5(path.encode()).hexdigest()
-
     def get_total_wasted_space(self) -> int:
-        """获取总共可节省的空间"""
+        """获取总共可节省的空间（使用缓存结果）"""
         file_duplicates = self.find_duplicate_files()
         folder_duplicates = self.find_duplicate_folders()
 
@@ -159,7 +169,7 @@ class DuplicateFinder:
         return total
 
     def get_summary(self) -> Dict:
-        """获取重复检测摘要"""
+        """获取重复检测摘要（使用缓存结果）"""
         file_duplicates = self.find_duplicate_files()
         folder_duplicates = self.find_duplicate_folders()
 

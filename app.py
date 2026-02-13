@@ -2,10 +2,13 @@
 网盘文件清理工具 - Flask 主应用
 """
 
+import logging
 import uuid
 from datetime import datetime
 from flask import Flask, render_template, request, jsonify, session, redirect, url_for, make_response
 from config import Config, PROVIDER_TYPES
+
+logger = logging.getLogger(__name__)
 
 # 导入核心模块
 from core.providers.baidu import BaiduProvider
@@ -26,6 +29,14 @@ from utils.supabase_client import get_supabase
 app = Flask(__name__)
 app.config.from_object(Config)
 
+# 本地开发内存 Provider 缓存（serverless 环境下不生效）
+_provider_store: dict = {}
+
+def _is_supabase_configured() -> bool:
+    """检查 Supabase 是否已配置"""
+    import os
+    return bool(os.environ.get('SUPABASE_URL') and os.environ.get('SUPABASE_KEY'))
+
 
 def get_session_id() -> str:
     """从 Flask session cookie 获取或创建会话 ID"""
@@ -34,13 +45,29 @@ def get_session_id() -> str:
     return session['session_id']
 
 
+def save_provider(sid: str, provider):
+    """保存 provider 到内存缓存（本地开发用）"""
+    _provider_store[sid] = provider
+
+
 def get_or_create_provider():
     """
-    从 Supabase user_sessions 恢复 Provider 实例
-    每次请求重建（serverless 无持久内存）
+    恢复 Provider 实例
+    - 本地开发：从内存缓存获取
+    - Serverless (Vercel)：从 Supabase user_sessions 重建
     """
     sid = get_session_id()
     provider_type = session.get('provider_type', 'baidu')
+
+    # 优先从内存缓存获取（本地开发模式）
+    if sid in _provider_store:
+        provider = _provider_store[sid]
+        if provider and provider.is_logged_in:
+            return provider
+
+    # 尝试从 Supabase 恢复（serverless 模式）
+    if not _is_supabase_configured():
+        return None
 
     try:
         supabase = get_supabase()
@@ -85,7 +112,7 @@ def get_or_create_provider():
                         'last_accessed': datetime.now().isoformat(),
                     }).eq('session_id', sid).execute()
                 except Exception as e:
-                    print(f'持久化 token 失败: {str(e)}')
+                    logger.error(f'持久化 token 失败: {str(e)}')
 
             provider.on_token_refreshed = on_token_refreshed
         else:
@@ -103,9 +130,12 @@ def get_or_create_provider():
             'last_accessed': datetime.now().isoformat()
         }).eq('session_id', sid).execute()
 
+        # 同时放入内存缓存
+        save_provider(sid, provider)
+
         return provider
     except Exception as e:
-        print(f'恢复 Provider 失败: {str(e)}')
+        logger.error(f'恢复 Provider 失败: {str(e)}')
         return None
 
 
@@ -169,33 +199,37 @@ def login():
         session['provider_type'] = provider_type
         session['user_info'] = result.get('user_info', {})
 
-        # 将凭据保存到 Supabase user_sessions
-        try:
-            supabase = get_supabase()
-            session_data = {
-                'session_id': sid,
-                'provider_type': provider_type,
-                'cookie_string': cookie_string,
-                'user_info': result.get('user_info', {}),
-                'created_at': datetime.now().isoformat(),
-                'last_accessed': datetime.now().isoformat(),
-            }
+        # 保存 provider 到内存缓存（本地开发可直接复用）
+        save_provider(sid, provider)
 
-            if provider_type == 'aliyun':
-                session_data['refresh_token'] = result.get('refresh_token', '')
-                session_data['access_token'] = result.get('access_token', '')
-                session_data['drive_id'] = result.get('drive_id', '')
-                session_data['token_expires_at'] = result.get('token_expires_at')
-                session_data['bdstoken'] = ''
-            else:
-                session_data['bdstoken'] = getattr(provider, 'bdstoken', '') or ''
+        # 将凭据保存到 Supabase user_sessions（serverless 持久化）
+        if _is_supabase_configured():
+            try:
+                supabase = get_supabase()
+                session_data = {
+                    'session_id': sid,
+                    'provider_type': provider_type,
+                    'cookie_string': cookie_string,
+                    'user_info': result.get('user_info', {}),
+                    'created_at': datetime.now().isoformat(),
+                    'last_accessed': datetime.now().isoformat(),
+                }
 
-            supabase.table('user_sessions').upsert(
-                session_data,
-                on_conflict='session_id'
-            ).execute()
-        except Exception as e:
-            print(f'保存会话失败: {str(e)}')
+                if provider_type == 'aliyun':
+                    session_data['refresh_token'] = result.get('refresh_token', '')
+                    session_data['access_token'] = result.get('access_token', '')
+                    session_data['drive_id'] = result.get('drive_id', '')
+                    session_data['token_expires_at'] = result.get('token_expires_at')
+                    session_data['bdstoken'] = ''
+                else:
+                    session_data['bdstoken'] = getattr(provider, 'bdstoken', '') or ''
+
+                supabase.table('user_sessions').upsert(
+                    session_data,
+                    on_conflict='session_id'
+                ).execute()
+            except Exception as e:
+                logger.error(f'保存会话失败: {str(e)}')
 
     return jsonify(result)
 
@@ -203,16 +237,19 @@ def login():
 @app.route('/logout')
 def logout():
     """登出"""
-    # 清理 Supabase 中的会话记录
     sid = session.get('session_id')
     if sid:
-        try:
-            supabase = get_supabase()
-            supabase.table('user_sessions').delete().eq(
-                'session_id', sid
-            ).execute()
-        except Exception:
-            pass
+        # 清理内存缓存
+        _provider_store.pop(sid, None)
+        # 清理 Supabase 中的会话记录
+        if _is_supabase_configured():
+            try:
+                supabase = get_supabase()
+                supabase.table('user_sessions').delete().eq(
+                    'session_id', sid
+                ).execute()
+            except Exception:
+                pass
 
     session.clear()
     return redirect(url_for('login'))
@@ -669,26 +706,31 @@ def aliyun_qr_check():
             session['provider_type'] = 'aliyun'
             session['user_info'] = login_result.get('user_info', {})
 
-            try:
-                supabase = get_supabase()
-                session_data = {
-                    'session_id': sid,
-                    'provider_type': 'aliyun',
-                    'cookie_string': '',
-                    'bdstoken': '',
-                    'refresh_token': login_result.get('refresh_token', ''),
-                    'access_token': login_result.get('access_token', ''),
-                    'drive_id': login_result.get('drive_id', ''),
-                    'token_expires_at': login_result.get('token_expires_at'),
-                    'user_info': login_result.get('user_info', {}),
-                    'created_at': datetime.now().isoformat(),
-                    'last_accessed': datetime.now().isoformat(),
-                }
-                supabase.table('user_sessions').upsert(
-                    session_data, on_conflict='session_id'
-                ).execute()
-            except Exception as e:
-                print(f'保存阿里云盘会话失败: {str(e)}')
+            # 保存 provider 到内存缓存
+            save_provider(sid, provider)
+
+            # 持久化到 Supabase（serverless 环境）
+            if _is_supabase_configured():
+                try:
+                    supabase = get_supabase()
+                    session_data = {
+                        'session_id': sid,
+                        'provider_type': 'aliyun',
+                        'cookie_string': '',
+                        'bdstoken': '',
+                        'refresh_token': login_result.get('refresh_token', ''),
+                        'access_token': login_result.get('access_token', ''),
+                        'drive_id': login_result.get('drive_id', ''),
+                        'token_expires_at': login_result.get('token_expires_at'),
+                        'user_info': login_result.get('user_info', {}),
+                        'created_at': datetime.now().isoformat(),
+                        'last_accessed': datetime.now().isoformat(),
+                    }
+                    supabase.table('user_sessions').upsert(
+                        session_data, on_conflict='session_id'
+                    ).execute()
+                except Exception as e:
+                    logger.error(f'保存阿里云盘会话失败: {str(e)}')
 
             qr_result['logged_in'] = True
             qr_result['user_info'] = login_result.get('user_info', {})

@@ -73,10 +73,17 @@ class FileCleaner:
                 'failed': []
             }
 
-        # 确保不删除所有副本
+        # 确保不删除所有副本：paths_to_keep 中至少有一个不在删除列表中
         if paths_to_keep:
-            # 验证至少保留了一份
-            pass
+            delete_set = set(paths_to_delete)
+            kept = [p for p in paths_to_keep if p not in delete_set]
+            if not kept:
+                return {
+                    'success': False,
+                    'message': '不能删除所有副本，请至少保留一份',
+                    'deleted': [],
+                    'failed': []
+                }
 
         return self.delete_files(paths_to_delete)
 
